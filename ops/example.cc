@@ -8,4 +8,5 @@ REGISTER_OP("Scaled")
       c->set_output(0, c->input(0));
       return Status::OK();
     });
-REGISTER_KERNEL_BUILDER(Name("Scaled").Device(DEVICE_CPU), ScaledOp);
+
+REGISTER_KERNEL_BUILDER(Name("Scaled").Device(DEVICE_CPU), ScaledOp<CPUDevice>)

@@ -1,15 +1,8 @@
 #pragma once
 
-#include <algorithm>
+#include "common.h"
 
-#include <tensorflow/core/framework/common_shape_fns.h>
-#include <tensorflow/core/framework/op.h>
-#include <tensorflow/core/framework/op_kernel.h>
-#include <tensorflow/core/framework/shape_inference.h>
-
-using namespace tensorflow;
-
-class ScaledOp : public OpKernel {
+template <typename Device> class ScaledOp : public OpKernel {
 public:
   explicit ScaledOp(OpKernelConstruction *context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("scale", &scale_));
@@ -22,12 +15,14 @@ public:
     Tensor &output = *optr;
 
     auto input_flat = input.flat<float>();
-    const float *input_ptr = &(input_flat(0));
+    const float *input_ptr = input_flat.data();
     auto output_flat = output.flat<float>();
-    float *output_ptr = &(output_flat(0));
+    float *output_ptr = output_flat.data();
 
-    std::transform(input_ptr, input_ptr + input_flat.size(), output_ptr,
-                   [this](float v) { return v * scale_; });
+    float scale = scale_;
+    Kernel<Device>::Launch([scale, input_ptr, output_ptr] XINLINE(
+                               int i) { output_ptr[i] = input_ptr[i] * scale; },
+                           input_flat.size());
   }
 
 private:
