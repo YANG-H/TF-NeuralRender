@@ -18,8 +18,16 @@
 
 #ifdef __CUDACC__
 #define XINLINE __device__ __host__
+#define XGLOBAL __global__
+#define XSHARED __shared__
+#define XINVOKE_KERNEL(kernel_name, grid_dim, block_dim, shared_bytes)         \
+  kernel_name<<<grid_dim, block_dim, shared_bytes>>>
 #else
 #define XINLINE
+#define XGLOBAL
+#define XSHARED
+#define XINVOKE_KERNEL(kernel_name, grid_dim, block_dim, shared_bytes)         \
+  kernel_name
 #endif
 
 using namespace tensorflow;
@@ -43,8 +51,10 @@ const int kMaxGridDim = 65535;
 /*! \brief suggested grid number for mapping kernel */
 const int kBaseGridNum = 1024;
 
-using CPUDevice = Eigen::ThreadPoolDevice;
-using GPUDevice = Eigen::GpuDevice;
+// using CPUDevice = Eigen::ThreadPoolDevice;
+// using GPUDevice = Eigen::GpuDevice;
+struct CPUDevice {};
+struct GPUDevice {};
 
 template <typename xpu> struct Kernel;
 
