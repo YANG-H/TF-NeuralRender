@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 import neural_render as nr
 import pymesh as pm
+import matplotlib.pyplot as plt
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -12,7 +13,7 @@ sys.path.append(BASE_DIR)
 def perspective(focal, H, W, z_near=1e-2, z_far=1e2, pp=None):
     if pp is None:
         pp = np.array([W/2, H/2])
-    result = np.zeros([4, 4], dtype=float)
+    result = np.zeros([4, 4], dtype='float32')
     result[0, 0] = 2 * focal / W
     result[1, 1] = 2 * focal / H
     result[0, 2] = - (2 * pp[0] / W - 1)
@@ -21,6 +22,18 @@ def perspective(focal, H, W, z_near=1e-2, z_far=1e2, pp=None):
     result[2, 3] = -2 * z_far*z_near / (z_far - z_near)
     result[3, 2] = -1
     # result[3, 3] = 1
+    return result
+
+
+def ortho(H, W, scale, z_near, z_far):
+    result = np.zeros([4, 4], dtype='float32')
+    result[0, 0] = 2 * scale / W
+    result[1, 1] = 2 * scale / H
+    result[2, 2] = -2 / (z_far - z_near)
+    result[0, 3] = -scale/W
+    result[1, 3] = -scale/H
+    result[2, 3] = -(z_far+z_near)/(z_far-z_near)
+    result[3, 3]=1
     return result
 
 
@@ -33,7 +46,7 @@ def look_at(eye, center, up):
     x = normalize(np.cross(up, z))
     y = np.cross(z, x)
 
-    result = np.zeros([4, 4], dtype=float)
+    result = np.zeros([4, 4], dtype='float32')
     result[0, 0] = -x[0]
     result[0, 1] = -x[1]
     result[0, 2] = -x[2]
@@ -64,11 +77,12 @@ def main():
     uvs = np.array([[[0, 0], [0, 1], [1, 0]]], dtype='float32')
     uvs = np.tile(uvs, reps=[mesh.faces.shape[0], 1, 1])
 
-    H = 400
-    W = 400
-    mv = look_at(eye=np.array([2, 3, 4]), center=np.array(
+    H = 50
+    W = 100
+    focal = 50
+    mv = look_at(eye=np.array([10, 10, 50]), center=np.array(
         [0, 0, 0]), up=np.array([0, 0, 1]))
-    proj = perspective(focal=200, H=H, W=W)
+    proj = perspective(focal=focal, H=H, W=W, pp=np.array([20, 40]))
 
     pts = mesh.vertices
     print(np.max(pts, axis=0))
@@ -89,10 +103,20 @@ def main():
     uvgrid_v, fids_v, z_v = nr.rasterize(pts=pts_v, faces=faces_v, uvs=uvs_v, H=H, W=W)
     with tf.Session() as ss:
         uvgrid, fids, z = ss.run([uvgrid_v, fids_v, z_v])
-        print(uvgrid.shape)
-        print(fids.shape)
-        print(z.shape)
-        print(np.min(fids))
+        print(uvgrid)
+        print(np.max(fids))
+        print(np.max(z))
+
+        z[np.where(z < -1)] = -1
+        z = (z + 1) / (np.max(z) - np.min(z))
+        plt.figure()
+        plt.imshow(z[0, :, :])
+        plt.show()
+
+        plt.figure()
+        plt.imshow(fids[0, :, :] >= 0)
+        plt.show()
+
 
     
 

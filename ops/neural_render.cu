@@ -39,6 +39,7 @@ rasterize_kernel(int batch_size, int npoints,
                  int32_t *out_fids_data, // batch_size x H x W
                  float *out_z_data       // batch_size x H x W
                  ) {
+
   extern XSHARED float shared_data[];
   float *z_at_this_pixel = shared_data;                  // [nfaces]
   float *z_for_reduction = z_at_this_pixel + blockDim.x; // [nfaces]
@@ -52,6 +53,14 @@ rasterize_kernel(int batch_size, int npoints,
   int pixel_x = blockIdx.x % W;
   int pixel_y = (blockIdx.x / W) % H;
   int batch_id = (blockIdx.x / W / H) % batch_size;
+
+  /// debuging
+  //  int ii = (batch_id * H + pixel_y) * W + pixel_x;
+  //  out_z_data[ii] = -1;
+  //  out_fids_data[ii] = -1;
+  //  out_uvgrid_data[ii * 2] = -1;
+  //  out_uvgrid_data[ii * 2 + 1] = -1;
+  //  return;
 
   // compute z and store it to z_at_this_pixel and z_for_reduction
   // get 3 corner point positions
@@ -137,6 +146,8 @@ void rasterize_impl(GPUDevice, int batch_size, int npoints, int nfaces,
                     int32_t *out_fids_data, float *out_z_data) {
   const unsigned shared_data_bytes = 2 * nfaces * sizeof(float);
   int grid_dim = batch_size * H * W;
+  // todo: grid_dim is likely to be larger than kMaxGridNum, fix this!
+
   int block_dim = nfaces;
   XINVOKE_KERNEL(rasterize_kernel, grid_dim, block_dim, shared_data_bytes)
   (batch_size, npoints, pts_data, faces_data, uvs_data, H, W, out_uvgrid_data,
