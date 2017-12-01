@@ -21,16 +21,20 @@ def rasterize(pts, faces, uvs, H, W):
     Output:
     ---
         - uvgrid: BxHxWx2
-        - fids: BxHxW
         - z: BxHxW
+        - fids: BxHxW
+        - bc: BxHxWx3, barycentric coordinates
     """
     assert pts.shape[0] == faces.shape[0] and pts.shape[0] == uvs.shape[0]
     assert pts.shape[2] == 3
     assert faces.shape[1] == uvs.shape[1]
     assert faces.shape[2] == 3
     assert uvs.shape[2] == 3 and uvs.shape[3] == 2
-    uvgrid, fids, z = MODEL.rasterize(pts, faces, uvs, H=H, W=W)
-    return uvgrid, fids, z
+    uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H=H, W=W)
+    return uvgrid, z, fids, bc
 
 
 ops.NoGradient('Rasterize')
+
+
+# def rasterize_grad(pts)
