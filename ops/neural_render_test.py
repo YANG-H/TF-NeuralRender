@@ -25,7 +25,7 @@ def perspective(focal, H, W, z_near=1e-2, z_far=1e2, pp=None):
     return result
 
 
-def ortho(H, W, scale, z_near, z_far):
+def ortho(H, W, scale, z_near=1e-2, z_far=1e2):
     result = np.zeros([4, 4], dtype='float32')
     result[0, 0] = 2 * scale / W
     result[1, 1] = 2 * scale / H
@@ -77,18 +77,19 @@ def main():
     uvs = np.array([[[0, 0], [0, 1], [1, 0]]], dtype='float32')
     uvs = np.tile(uvs, reps=[mesh.faces.shape[0], 1, 1])
 
-    H = 50
-    W = 100
-    focal = 50
-    mv = look_at(eye=np.array([10, 10, 50]), center=np.array(
-        [0, 0, 0]), up=np.array([0, 0, 1]))
-    proj = perspective(focal=focal, H=H, W=W, pp=np.array([20, 40]))
+    H = 200
+    W = 200
+    focal = 100
+    mv = look_at(eye=np.array([2, 3, 4]),
+                 center=np.array([0, 0, 0]),
+                 up=np.array([0, 0, 1]))
+    proj = perspective(focal=focal, H=H, W=W)
 
     pts = mesh.vertices
     print(np.max(pts, axis=0))
     print(np.min(pts, axis=0))
 
-    pts = transform((proj * mv), pts, out4d=True)
+    pts = transform(np.matmul(proj, mv), pts, out4d=True)
     print(np.max(pts, axis=0))
     print(np.min(pts, axis=0))
     pts = pts[:, 0:3]
@@ -100,6 +101,13 @@ def main():
     pts_v = tf.constant(pts.astype('float32'))
     faces_v = tf.constant(faces.astype('int32'))
     uvs_v = tf.constant(uvs.astype('float32'))
+
+    # pts_v = tf.constant([[1, 1, -1], [-1, -0.3, -1], [-.5, .7, -1],
+    #                      [1, 0, 0], [0, 0, 0], [1, 1, 0]], shape=[1, 6, 3], dtype='float32')
+    # faces_v = tf.constant([[0, 1, 2]], shape=[1, 1, 3], dtype='int32')
+    # uvs_v = tf.constant([0, 0, 0, 1, 1, 0], shape=[1, 1, 3, 2], dtype='float32')
+    # uvs_v = tf.tile(uvs_v, [1, faces_v.shape[1], 1, 1])
+
     uvgrid_v, fids_v, z_v = nr.rasterize(pts=pts_v, faces=faces_v, uvs=uvs_v, H=H, W=W)
     with tf.Session() as ss:
         uvgrid, fids, z = ss.run([uvgrid_v, fids_v, z_v])
@@ -107,15 +115,12 @@ def main():
         print(np.max(fids))
         print(np.max(z))
 
-        z[np.where(z < -1)] = -1
-        z = (z + 1) / (np.max(z) - np.min(z))
+        z[np.where(z < 0)] = np.min(z[np.where(z >= 0)])
         plt.figure()
         plt.imshow(z[0, :, :])
-        plt.show()
+        # plt.imshow(fids[0, :, :])
+        plt.show()        
 
-        plt.figure()
-        plt.imshow(fids[0, :, :] >= 0)
-        plt.show()
 
 
     

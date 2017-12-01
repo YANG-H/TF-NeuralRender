@@ -103,12 +103,15 @@ rasterize_kernel(int batch_size, int npoints,
   __syncthreads();
 
   // find the max z and store it to z_for_reduction[0]
-  for (unsigned int s = (blockDim.x + 1) / 2; s > 1; s = (s + 1) / 2) {
-    if (face_id < s && face_id + s < blockDim.x) {
+  for (unsigned int s = (nfaces + 1) / 2;; s = (s + 1) / 2) {
+    if (face_id < s && face_id + s < nfaces) {
       z_for_reduction[face_id] =
           max(z_for_reduction[face_id], z_for_reduction[face_id + s]);
     }
     __syncthreads();
+    if (s == 1) {
+      break;
+    }
   }
 
   // write max z
