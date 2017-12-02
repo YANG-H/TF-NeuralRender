@@ -2,7 +2,10 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import sys
 import os
-import util
+
+import misc
+import spatial_transform as st
+import camera
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
@@ -11,7 +14,7 @@ MODEL = tf.load_op_library(os.path.join(
     BASE_DIR, 'qt_build_release', 'libTFNeuralRenderOps.so'))
 
 
-@util.profile
+@misc.profile
 def rasterize(pts, faces, uvs, H=400, W=400):
     """
     Input:
@@ -44,3 +47,23 @@ def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc):
     grad_pts = MODEL.rasterize_grad(
         pts, faces, uvs, uvgrid, z, fids, bc, grad_uvgrid, grad_z, grad_bc)
     return grad_pts, None, None
+
+
+def render(pts, faces, uvs, tex, modelview, proj, H, W):
+    ''' render textured mesh to image
+    Input
+    ---
+    - `pts`: BxNpx3, float32
+    - `faces`: BxNfx3, int32
+    - `uvs`: BxNfx3x2, float32
+    - `tex`: BxHtxWtxD, float32
+    - `modelview`: Bx4x4, float32
+    - `proj`: Bx4x4, float32
+    Output
+    ---
+    - `rendered`: BxHxWxD, float32
+    '''
+    pts = camera.apply_transform(pts, modelview, proj)
+    uvgrid, z, fids, bc = rasterize(pts, faces, uvs, H, W)
+    rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
+    return rendered

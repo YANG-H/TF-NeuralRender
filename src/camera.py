@@ -1,6 +1,5 @@
 import tensorflow as tf
 import numpy as np
-import util
 
 
 def perspective(focal, H, W, z_near=1e-2, z_far=1e2):
@@ -26,28 +25,11 @@ def look_at(eye, center, up):
     x = _normalize(tf.cross(up, z))
     y = tf.cross(z, x)
 
-    # result = np.zeros([batch_size, 4, 4], dtype='float32')
-    # result[:, 0, 0] = -x[:, 0]
-    # result[:, 0, 1] = -x[:, 1]
-    # result[:, 0, 2] = -x[:, 2]
-
-    # result[:, 1, 0] = y[:, 0]
-    # result[:, 1, 1] = y[:, 1]
-    # result[:, 1, 2] = y[:, 2]
-
-    # result[:, 2, 0] = -z[:, 0]
-    # result[:, 2, 1] = -z[:, 1]
-    # result[:, 2, 2] = -z[:, 2]
-
-    # result[:, 0, 3] = np.sum(x * eye, axis=-1)
-    # result[:, 1, 3] = -np.sum(y * eye, axis=-1)
-    # result[:, 2, 3] = np.sum(z * eye, axis=-1)
-    # result[:, 3, 3] = 1
-    #
     # [-x0 -x1 -x2 a]
     # [ y0  y1  y2 b]
     # [-z0 -z1 -z2 c]
     # [  0   0   0 1]
+
     def _dot(xx, yy):
         return tf.reduce_sum(xx * yy)
     a = _dot(x, eye)
