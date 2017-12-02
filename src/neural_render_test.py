@@ -14,12 +14,12 @@ import neural_render as nr
 
 
 def main():
-    # mesh = pm.meshutils.generate_icosphere(
-        # radius=1, center=np.array([0, 0, 0]))
-    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'plate.ply'))
+    mesh = pm.meshutils.generate_icosphere(
+        radius=1, center=np.array([0, 0, 0]))
+    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'plate.ply'))
     print(mesh.bbox)
     pts = np.expand_dims(mesh.vertices, 0).astype('float32')
-    pts = pts / 10.0
+    # pts = pts / 10.0
     faces = np.expand_dims(mesh.faces, 0).astype('int32')
     uvs = np.array([[[[0, 0], [0, 1], [1, 0]]]], dtype='float32')
     uvs = np.tile(uvs, reps=tuple(faces.shape[:2]) + (1, 1))
@@ -49,7 +49,7 @@ def main():
 
     print(np.min(fids))
     plt.figure()
-    plt.imshow(fids[0, :, :])
+    plt.imshow(rendered[0, :, :, :])
     plt.show()
 
 

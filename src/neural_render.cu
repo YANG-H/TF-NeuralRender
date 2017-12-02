@@ -137,14 +137,6 @@ rasterize_kernel(int batch_size, //
     int best_fid_this_thread = -1;
     float best_bc_this_thread[3] = {-1.0f, -1.0f, -1.0f};
 
-    // get the shared memory for storing z values on this pixel
-    float *z_at_this_pixel =
-        shared_data +
-        2 * nfaces_each_iteration *
-            pixel_id_this_iteration; // [nfaces_each_iteration]
-    float *z_for_reduction =
-        z_at_this_pixel + nfaces_each_iteration; // [nfaces_each_iteration]
-
     for (int face_iter_id = 0; face_iter_id < nfaceiter_each_block;
          face_iter_id++) {
 
@@ -176,25 +168,29 @@ rasterize_kernel(int batch_size, //
       float bc[3];
       get_barycentric_coord(pixel_f, ppos[0], ppos[1], ppos[2], bc);
 
-      bool inside_face = is_in_triangle(pixel_f, ppos[0], ppos[1], ppos[2]);
-
       // get z depth
-      float z = -FLT_MAX;
-      if (inside_face) {
-        z = 0;
+      if (is_in_triangle(pixel_f, ppos[0], ppos[1], ppos[2])) {
+        float z = 0;
         for (int k = 0; k < 3; k++) {
           z += bc[k] * ppos[k][2];
         }
-      }
-      if (inside_face && z >= best_z_this_thread) {
-        best_z_this_thread = z;
-        best_fid_this_thread = face_id;
-        for (int k = 0; k < 3; k++) {
-          best_bc_this_thread[k] = bc[k];
+        if (z >= best_z_this_thread) {
+          best_z_this_thread = z;
+          best_fid_this_thread = face_id;
+          for (int k = 0; k < 3; k++) {
+            best_bc_this_thread[k] = bc[k];
+          }
         }
       }
     }
 
+    // get the shared memory for storing z values on this pixel
+    float *z_at_this_pixel =
+        shared_data +
+        2 * nfaces_each_iteration *
+            pixel_id_this_iteration; // [nfaces_each_iteration]
+    float *z_for_reduction =
+        z_at_this_pixel + nfaces_each_iteration; // [nfaces_each_iteration]
     z_at_this_pixel[face_id_this_iteration] =
         z_for_reduction[face_id_this_iteration] = best_z_this_thread;
     __syncthreads();
@@ -230,15 +226,10 @@ rasterize_kernel(int batch_size, //
         }
 
         float puvs[3][2];
+        int best_global_face_id = batch_id * nfaces + best_fid_this_thread;
         for (int k = 0; k < 3; k++) {
-          puvs[k][0] =
-              uvs_data[((batch_id * nfaces + best_fid_this_thread) * 3 + k) *
-                           2 +
-                       0];
-          puvs[k][1] =
-              uvs_data[((batch_id * nfaces + best_fid_this_thread) * 3 + k) *
-                           2 +
-                       1];
+          puvs[k][0] = uvs_data[(best_global_face_id * 3 + k) * 2 + 0];
+          puvs[k][1] = uvs_data[(best_global_face_id * 3 + k) * 2 + 1];
         }
         float u = 0, v = 0;
         for (int k = 0; k < 3; k++) {
