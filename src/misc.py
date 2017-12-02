@@ -1,7 +1,13 @@
-import numpy as np
-
+import os
+import sys
 import time
 import logging
+
+import numpy as np
+
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR = os.path.join(BASE_DIR, 'data')
 
 
 def normalize(v):
@@ -20,7 +26,7 @@ def profile(func):
         result = func(*args, **kwargs)
         elapsed = time.time() - started_at
         logging.info(elapsed)
-        print(elapsed)
+        print('#time cost: %f seconds' % elapsed)
         return result
 
     return wrap

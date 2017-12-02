@@ -13,7 +13,7 @@ def perspective(focal, H, W, z_near=1e-2, z_far=1e2):
     return tf.cast(tf.stack([[2 * focal / W, 0, 0, 0],
                              [0, 2 * focal / H, 0, 0],
                              [0, 0,  aa, bb],
-                             [0, 0, -1, 0]]), tf.float32)
+                             [0, 0, 1, 0]]), tf.float32)
 
 
 def look_at(eye, center, up):

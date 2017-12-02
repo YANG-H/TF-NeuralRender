@@ -16,21 +16,20 @@ MODEL = tf.load_op_library(os.path.join(
 
 @misc.profile
 def rasterize(pts, faces, uvs, H=400, W=400):
-    """
-    Input:
+    ''' rasterize
+    Input
     ---
-        - pts: BxNpx3 float32
-        - faces:  BxNfx3 int32
-        - uvs: BxNfx3x2 float32
-        - screen_shape: [H W]
-
-    Output:
-    --- 
-        - uvgrid: BxHxWx2
-        - z: BxHxW
-        - fids: BxHxW
-        - bc: BxHxWx3, barycentric coordinates
-    """
+    - `pts`: BxNpx3 float32
+    - `faces`:  BxNfx3 int32
+    - `uvs`: BxNfx3x2 float32
+    
+    Output
+    ---
+    - `uvgrid`: BxHxWx2
+    - `z`: BxHxW
+    - `fids`: BxHxW
+    - `bc`: BxHxWx3, barycentric coordinates
+    '''
     assert pts.shape[0] == faces.shape[0] and pts.shape[0] == uvs.shape[0]
     assert pts.shape[2] == 3
     assert faces.shape[1] == uvs.shape[1]
@@ -59,11 +58,16 @@ def render(pts, faces, uvs, tex, modelview, proj, H, W):
     - `tex`: BxHtxWtxD, float32
     - `modelview`: Bx4x4, float32
     - `proj`: Bx4x4, float32
+    
     Output
     ---
     - `rendered`: BxHxWxD, float32
+    - `uvgrid`: BxHxWx2
+    - `z`: BxHxW
+    - `fids`: BxHxW
+    - `bc`: BxHxWx3, barycentric coordinates
     '''
     pts = camera.apply_transform(pts, modelview, proj)
     uvgrid, z, fids, bc = rasterize(pts, faces, uvs, H, W)
     rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
-    return rendered
+    return rendered, uvgrid, z, fids, bc
