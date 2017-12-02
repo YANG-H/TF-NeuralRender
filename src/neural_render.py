@@ -2,6 +2,8 @@ import tensorflow as tf
 from tensorflow.python.framework import ops
 import sys
 import os
+import util
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(BASE_DIR)
 
@@ -9,7 +11,8 @@ MODEL = tf.load_op_library(os.path.join(
     BASE_DIR, 'qt_build_release', 'libTFNeuralRenderOps.so'))
 
 
-def rasterize(pts, faces, uvs, H, W):
+@util.profile
+def rasterize(pts, faces, uvs, H=400, W=400):
     """
     Input:
     ---
@@ -19,7 +22,7 @@ def rasterize(pts, faces, uvs, H, W):
         - screen_shape: [H W]
 
     Output:
-    ---
+    --- 
         - uvgrid: BxHxWx2
         - z: BxHxW
         - fids: BxHxW
@@ -34,7 +37,10 @@ def rasterize(pts, faces, uvs, H, W):
     return uvgrid, z, fids, bc
 
 
-ops.NoGradient('Rasterize')
-
-
-# def rasterize_grad(pts)
+@tf.RegisterGradient('Rasterize')
+def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc):
+    pts, faces, uvs = op.inputs
+    uvgrid, z, fids, bc = op.outputs
+    grad_pts = MODEL.rasterize_grad(
+        pts, faces, uvs, uvgrid, z, fids, bc, grad_uvgrid, grad_z, grad_bc)
+    return grad_pts, None, None

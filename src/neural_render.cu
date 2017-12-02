@@ -15,22 +15,6 @@ template <typename T>
 XINLINE void get_barycentric_coord(const T *p, const T *a, const T *b,
                                    const T *c, T *bc) {
   // clang-format off
-    //    / (ay - cy) (ax - px)   (ax - cx) (ay - py)  (ax - bx) (ay - py)   (ay - by) (ax - px) |
-    //    | ------------------- - -------------------, ------------------- -------------------- |
-    //    \          #1                    #1                   #1    #1         /
-    //    where
-    //       #1 == ax by - ay bx - ax cy + ay cx + bx cy - by cx
-  // clang-format on
-  //  T s = a[0] * b[1] - a[1] * b[0] - a[0] * c[1] + a[1] * c[0] + b[0] * c[1]
-  //  -
-  //        b[1] * c[0];
-  //  bc[1] = (a[1] - c[1]) * (a[0] - p[0]) - (a[0] - c[0]) * (a[1] - p[1]);
-  //  bc[1] /= s;
-  //  bc[2] = (a[0] - b[0]) * (a[1] - p[1]) - (a[1] - b[1]) * (a[0] - p[0]);
-  //  bc[2] /= s;
-  //  bc[0] = 1 - bc[1] - bc[2];
-
-  // clang-format off
     /* #bc[0]:
        bx cy - by cx - bx py + by px + cx py - cy px
        ---------------------------------------------
@@ -82,7 +66,7 @@ XINLINE void add_barycentric_coord_grad(const T *p, const T *a, const T *b,
 }
 
 XGLOBAL void
-rasterize_kernel(int batch_size, int npoints,
+rasterize_kernel(int batch_size, int niterations_each_block, int npoints,
                  const float *pts_data,     // batch_size x npoints x 3
                  const int32_t *faces_data, // batch_size x nfaces x 3
                  const float *uvs_data,     // batch_size x nfaces x 3 x 2
@@ -95,107 +79,115 @@ rasterize_kernel(int batch_size, int npoints,
 
   extern XSHARED float shared_data[];
 
-  // blockDim.xy: [npixels_each_block, nfaces]
-  int npixels_each_block = blockDim.x;
-  int nfaces = blockDim.y;
-  int pixel_id_this_block = threadIdx.x;
-  int face_id = threadIdx.y;
+  // niterations_each_block
+  for (int iteration_id = 0; iteration_id < niterations_each_block;
+       iteration_id++) {
 
-  // gridDim.x: [batch_size x (H x W / npixels_each_block)]
-  // blockDim.x: npixels_each_block
-  int global_pixel_id = blockIdx.x * npixels_each_block + pixel_id_this_block;
-  if (global_pixel_id >= batch_size * H * W) { // not a valid pixel here
-    return;
-  }
-  int pixel_x = global_pixel_id % W;
-  int pixel_y = (global_pixel_id / W) % H;
-  int batch_id = (global_pixel_id / W / H) % batch_size;
+    // blockDim.xy: [npixels_each_iteration, nfaces]
+    int npixels_each_iteration = blockDim.x;
+    int nfaces = blockDim.y;
+    int pixel_id_this_iteration = threadIdx.x;
+    int face_id = threadIdx.y;
 
-  float *z_at_this_pixel =
-      shared_data + 2 * nfaces * pixel_id_this_block; // [nfaces]
-  float *z_for_reduction = z_at_this_pixel + nfaces;  // [nfaces]
-
-  // compute z and store it to z_at_this_pixel and z_for_reduction
-  // get 3 corner point positions
-  int32_t pids[3];
-  float ppos[3][3];
-  for (int k = 0; k < 3; k++) {
-    pids[k] = faces_data[(batch_id * nfaces + face_id) * 3 + k];
-    for (int j = 0; j < 3; j++) {
-      ppos[k][j] = pts_data[(batch_id * npoints + pids[k]) * 3 + j];
+    // gridDim.x: [batch_size x (H x W / npixels_each_block)]
+    // ...         [niterations_each_block]
+    // blockDim.x: [npixels_each_iteration]
+    int global_pixel_id = (blockIdx.x * niterations_each_block + iteration_id) *
+                              npixels_each_iteration +
+                          pixel_id_this_iteration;
+    if (global_pixel_id >= batch_size * H * W) { // not a valid pixel here
+      return;
     }
-  }
-  // compute barycentric coords
-  float pixel_fx = (pixel_x + 0.5f) / W;
-  pixel_fx = pixel_fx * 2 - 1; // [-1, 1]
-  float pixel_fy = (pixel_y + 0.5f) / H;
-  pixel_fy = pixel_fy * 2 - 1; // [-1, 1]
-  float pixel_f[2] = {pixel_fx, pixel_fy};
-  float bc[3];
-  get_barycentric_coord(pixel_f, ppos[0], ppos[1], ppos[2], bc);
+    int pixel_x = global_pixel_id % W;
+    int pixel_y = (global_pixel_id / W) % H;
+    int batch_id = (global_pixel_id / W / H) % batch_size;
 
-  bool inside_face = true;
-  for (int k = 0; k < 3; k++) {
-    if (bc[k] < 0 || bc[k] > 1) {
-      inside_face = false;
-      break;
-    }
-  }
+    float *z_at_this_pixel =
+        shared_data + 2 * nfaces * pixel_id_this_iteration; // [nfaces]
+    float *z_for_reduction = z_at_this_pixel + nfaces;      // [nfaces]
 
-  // get z depth
-  float z = -FLT_MAX;
-  if (inside_face) {
-    z = 0;
+    // compute z and store it to z_at_this_pixel and z_for_reduction
+    // get 3 corner point positions
+    int32_t pids[3];
+    float ppos[3][3];
     for (int k = 0; k < 3; k++) {
-      z += bc[k] * ppos[k][2];
+      pids[k] = faces_data[(batch_id * nfaces + face_id) * 3 + k];
+      for (int j = 0; j < 3; j++) {
+        ppos[k][j] = pts_data[(batch_id * npoints + pids[k]) * 3 + j];
+      }
     }
-  }
-  z_at_this_pixel[face_id] = z_for_reduction[face_id] = z;
-  __syncthreads();
+    // compute barycentric coords
+    float pixel_fx = (pixel_x + 0.5f) / W;
+    pixel_fx = pixel_fx * 2 - 1; // [-1, 1]
+    float pixel_fy = (pixel_y + 0.5f) / H;
+    pixel_fy = pixel_fy * 2 - 1; // [-1, 1]
+    float pixel_f[2] = {pixel_fx, pixel_fy};
+    float bc[3];
+    get_barycentric_coord(pixel_f, ppos[0], ppos[1], ppos[2], bc);
 
-  // find the max z and store it to z_for_reduction[0]
-  for (unsigned int s = (nfaces + 1) / 2;; s = (s + 1) / 2) {
-    if (face_id < s && face_id + s < nfaces) {
-      z_for_reduction[face_id] =
-          max(z_for_reduction[face_id], z_for_reduction[face_id + s]);
+    bool inside_face = true;
+    for (int k = 0; k < 3; k++) {
+      if (bc[k] < 0 || bc[k] > 1) {
+        inside_face = false;
+        break;
+      }
     }
+
+    // get z depth
+    float z = -FLT_MAX;
+    if (inside_face) {
+      z = 0;
+      for (int k = 0; k < 3; k++) {
+        z += bc[k] * ppos[k][2];
+      }
+    }
+    z_at_this_pixel[face_id] = z_for_reduction[face_id] = z;
     __syncthreads();
-    if (s == 1) {
-      break;
-    }
-  }
 
-  // write max z
-  int out_loc = (batch_id * H + pixel_y) * W + pixel_x;
-  out_z_data[out_loc] = z_for_reduction[0];
-  out_fids_data[out_loc] = -1;
-  out_uvgrid_data[out_loc * 2 + 0] = -1;
-  out_uvgrid_data[out_loc * 2 + 1] = -1;
-  __syncthreads();
-
-  // write face_id, bc and uvgrid
-  if (inside_face &&
-      z_at_this_pixel[face_id] >=
-          z_for_reduction[0]) { // this is the visible face
-
-    out_fids_data[out_loc] = face_id; // write face_id
-    for (int k = 0; k < 3; k++) {
-      out_bc_data[out_loc * 3 + k] = bc[k]; // write bc
+    // find the max z and store it to z_for_reduction[0]
+    for (unsigned int s = (nfaces + 1) / 2;; s = (s + 1) / 2) {
+      if (face_id < s && face_id + s < nfaces) {
+        z_for_reduction[face_id] =
+            max(z_for_reduction[face_id], z_for_reduction[face_id + s]);
+      }
+      __syncthreads();
+      if (s == 1) {
+        break;
+      }
     }
 
-    float puvs[3][2];
-    for (int k = 0; k < 3; k++) {
-      puvs[k][0] = uvs_data[((batch_id * nfaces + face_id) * 3 + k) * 2 + 0];
-      puvs[k][1] = uvs_data[((batch_id * nfaces + face_id) * 3 + k) * 2 + 1];
+    // write max z
+    int out_loc = (batch_id * H + pixel_y) * W + pixel_x;
+    out_z_data[out_loc] = z_for_reduction[0];
+    out_fids_data[out_loc] = -1;
+    out_uvgrid_data[out_loc * 2 + 0] = -1;
+    out_uvgrid_data[out_loc * 2 + 1] = -1;
+    __syncthreads();
+
+    // write face_id, bc and uvgrid
+    if (inside_face &&
+        z_at_this_pixel[face_id] >=
+            z_for_reduction[0]) { // this is the visible face
+
+      out_fids_data[out_loc] = face_id; // write face_id
+      for (int k = 0; k < 3; k++) {
+        out_bc_data[out_loc * 3 + k] = bc[k]; // write bc
+      }
+
+      float puvs[3][2];
+      for (int k = 0; k < 3; k++) {
+        puvs[k][0] = uvs_data[((batch_id * nfaces + face_id) * 3 + k) * 2 + 0];
+        puvs[k][1] = uvs_data[((batch_id * nfaces + face_id) * 3 + k) * 2 + 1];
+      }
+      float u = 0, v = 0;
+      for (int k = 0; k < 3; k++) {
+        u += bc[k] * puvs[k][0];
+        v += bc[k] * puvs[k][1];
+      }
+      // write uvgrid
+      out_uvgrid_data[out_loc * 2 + 0] = u;
+      out_uvgrid_data[out_loc * 2 + 1] = v;
     }
-    float u = 0, v = 0;
-    for (int k = 0; k < 3; k++) {
-      u += bc[k] * puvs[k][0];
-      v += bc[k] * puvs[k][1];
-    }
-    // write uvgrid
-    out_uvgrid_data[out_loc * 2 + 0] = u;
-    out_uvgrid_data[out_loc * 2 + 1] = v;
   }
 }
 
@@ -207,20 +199,27 @@ void RasterizeOp<GPUDevice>::rasterize_impl(
     float *out_bc_data) {
 
   int npixels = batch_size * H * W;
-  int npixels_each_block =
-      npixels >= kMaxGridDim ? ((npixels + kMaxGridDim - 1) / kMaxGridDim) : 1;
-  int nblocks = npixels >= kMaxGridDim ? kMaxGridDim : npixels;
+
+  int nblocks = min(kMaxGridDim, npixels);
+  int npixels_each_block = (npixels + nblocks - 1) / nblocks;
+
+  int npixels_each_iteration = min(min(kBaseThreadNum, npixels_each_block),
+                                   int(48 * 1024 / 2 / nfaces / sizeof(float)));
+  int niterations_each_block =
+      (npixels_each_block + npixels_each_iteration - 1) /
+      npixels_each_iteration;
+
   dim3 grid_dim(nblocks);
   //  CHECK_LT(nblocks, kMaxGridDim);
 
   const unsigned shared_data_bytes =
-      2 * nfaces * npixels_each_block * sizeof(float);
-  dim3 block_dim(npixels_each_block, nfaces);
+      2 * nfaces * npixels_each_iteration * sizeof(float);
+  dim3 block_dim(npixels_each_iteration, nfaces);
   //  CHECK_LT(npixels_each_block * nfaces, kMaxThreadsPerBlock);
 
   XINVOKE_KERNEL(rasterize_kernel, grid_dim, block_dim, shared_data_bytes)
-  (batch_size, npoints, pts_data, faces_data, uvs_data, H, W, out_uvgrid_data,
-   out_z_data, out_fids_data, out_bc_data);
+  (batch_size, niterations_each_block, npoints, pts_data, faces_data, uvs_data,
+   H, W, out_uvgrid_data, out_z_data, out_fids_data, out_bc_data);
 }
 
 REGISTER_KERNEL_BUILDER(Name("Rasterize").Device(DEVICE_GPU),

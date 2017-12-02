@@ -102,4 +102,5 @@ ENV/
 
 qt_build*
 *.txt.user
+.vscode
 

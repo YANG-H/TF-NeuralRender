@@ -57,6 +57,7 @@ const int kMaxGridDim = 65535;
 /*! \brief suggested grid number for mapping kernel */
 const int kBaseGridNum = 1024;
 
+
 // using CPUDevice = Eigen::ThreadPoolDevice;
 // using GPUDevice = Eigen::GpuDevice;
 struct CPUDevice {};
