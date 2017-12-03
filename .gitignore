@@ -104,3 +104,6 @@ qt_build*
 *.txt.user
 .vscode
 
+log/
+data/VGG
+

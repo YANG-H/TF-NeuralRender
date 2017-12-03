@@ -1,11 +1,18 @@
+import os
+import sys
 import time
+import math
 import functools
 import tensorflow as tf
 import numpy as np
 import pymesh as pm
+from scipy import ndimage
 
 import neural_render as nr
+import camera
 import vgg
+
+import misc
 
 STYLE_LAYERS = ('relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1')
 CONTENT_LAYER = 'relu4_2'
@@ -30,19 +37,18 @@ def _tensor_size(tensor):
 
 
 def optimize(content_targets_pts, faces,  # single mesh
-             modelviews, projs,  # multiple cams
+             ncams,  # number of cams
              style_target_img,  # single image
-             constent_weight, style_weight, tv_weight, vgg_path, epochs=10,
-             print_iterations=1000,
-             save_path='3dns.ckpt', learning_rate=1e-3):
+             content_weight, style_weight, tv_weight, epochs=10,
+             vgg_path=os.path.join(misc.DATA_DIR, 'VGG',
+                                   'imagenet-vgg-verydeep-19.mat'),
+             log_dir=os.path.join(misc.BASE_DIR, 'log'),
+             learning_rate=1e-3):
 
     assert len(content_targets_pts.shape) == 2
     assert len(faces.shape) == 2
-    assert modelviews.shape[0] == projs.shape[0]
-    batch_size = modelviews.shape[0]
 
-    # tex is trainable
-    uvs = _make_uvs(nfaces=faces.shape[0])
+    batch_size = ncams
 
     style_features = {}
 
@@ -66,15 +72,16 @@ def optimize(content_targets_pts, faces,  # single mesh
         X_pts = tf.placeholder(
             tf.float32, shape=content_targets_pts.shape, name='X_pts')
 
-        pred_pts = tf.variable(
-            initial_value=content_targets_pts, trainable=True)
-        pred_tex = tf.variable(
-            initial_value=tf.random_normal(500, 500, 3) * 0.256,
-            trainable=True)
+        pred_pts = tf.Variable(
+            initial_value=content_targets_pts, trainable=True,
+            dtype=tf.float32)
+        pred_tex = tf.Variable(
+            initial_value=tf.random_normal((500, 500, 3)) * 0.256,
+            trainable=True, dtype=tf.float32)
 
         # content(shape) loss
         npoints = content_targets_pts.shape[0]
-        content_loss = constent_weight * \
+        content_loss = content_weight * \
             (tf.nn.l2_loss(X_pts - pred_pts) / npoints)
 
         # style losses
@@ -84,8 +91,18 @@ def optimize(content_targets_pts, faces,  # single mesh
                                    multiples=[batch_size, 1, 1, 1])
         faces_batched = tf.tile(tf.expand_dims(
             faces, axis=0), multiples=[batch_size, 1, 1])
+        uvs = _make_uvs(nfaces=faces.shape[0])
         uvs_batched = tf.tile(tf.expand_dims(
             uvs, axis=0), multiples=[batch_size, 1, 1, 1])
+
+        def _make_modelview(i):
+            return camera.look_at(
+                eye=[math.cos(i / ncams * math.pi * 2),
+                     math.sin(i / ncams * math.pi * 2), 1],
+                center=[0, 0, 0], up=[0, 0, 1])
+        modelviews = tf.stack([_make_modelview(i) for i in range(ncams)])
+        projs = tf.tile(tf.expand_dims(camera.perspective(focal=300, H=255, W=255), axis=0),
+                        [ncams, 1, 1])
 
         pred_rendered, uvgrid, z, fids, bc = nr.render(
             pts=pred_pts_batched, faces=faces_batched, uvs=uvs_batched,
@@ -121,12 +138,44 @@ def optimize(content_targets_pts, faces,  # single mesh
 
         loss = content_loss + style_loss
 
+        tf.summary.scalar("loss", loss)
+        tf.summary.scalar("content_loss", content_loss)
+        tf.summary.scalar("style_loss", style_loss)
+        tf.summary.image("rendered", pred_rendered)        
+        merged_summary_op = tf.summary.merge_all()
+        summary_writer = tf.summary.FileWriter(
+            log_dir, graph=tf.get_default_graph())
+
         # overall loss
         train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
         sess.run(tf.global_variables_initializer())
-        for epoch in range(epoches):
+        for epoch in range(epochs):
             start_time = time.time()
-            sess.run(train_step, feed_dict={X_pts: content_targets_pts})
+            _, summary = sess.run([train_step, merged_summary_op], feed_dict={
+                                  X_pts: content_targets_pts})
             end_time = time.time()
             delta_time = end_time - start_time
-            print('%d: %f seconds' % (epoch, delta_time))
+            print('%d: time cost=%f seconds' % (epoch, delta_time))
+            summary_writer.add_summary(summary, epoch)
+
+
+def main():
+    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
+    mesh = pm.meshutils.generate_icosphere(radius=1, center=np.zeros([3]))
+    print(mesh.bbox)
+    bmin, bmax = mesh.bbox
+    pts = mesh.vertices
+    pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
+                                       axis=0), [mesh.num_vertices, 1])
+    pts = pts / np.max(np.linalg.norm(pts, axis=1))
+    faces = mesh.faces
+
+    style_img = ndimage.imread(os.path.join(misc.DATA_DIR, 'style', 'wave.jpg'),
+                               mode='RGB')
+
+    optimize(pts, faces, 4, style_img, 
+             content_weight=10, style_weight=100, tv_weight=0)
+
+
+if __name__ == '__main__':
+    main()

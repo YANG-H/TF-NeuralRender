@@ -14,10 +14,17 @@ import neural_render as nr
 
 
 def main():
-    mesh = pm.meshutils.generate_icosphere(
-        radius=1, center=np.array([0, 0, 0]))
-    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'plate.ply'))
+    # mesh = pm.meshutils.generate_icosphere(
+    #     radius=1, center=np.array([0, 0, 0]))
+    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
     print(mesh.bbox)
+    bmin, bmax = mesh.bbox
+    pts = mesh.vertices
+    pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
+                                       axis=0), [mesh.num_vertices, 1])
+    pts = pts / np.max(np.linalg.norm(pts, axis=1))
+    print(np.max(pts, axis=0), np.min(pts, axis=0))
+
     pts = np.expand_dims(mesh.vertices, 0).astype('float32')
     # pts = pts / 10.0
     faces = np.expand_dims(mesh.faces, 0).astype('int32')
@@ -31,9 +38,9 @@ def main():
                             center=tf.constant([0, 0, 0], dtype='float32'),
                             up=tf.constant([0, 0, -1], dtype='float32'))
         mv = tf.expand_dims(mv, axis=0)
-        H = 300
-        W = 300
-        proj = camera.perspective(focal=300, H=H, W=W)
+        H = 3200
+        W = 3200
+        proj = camera.perspective(focal=3500, H=H, W=W)
         proj = tf.expand_dims(proj, axis=0)
 
         n = 1

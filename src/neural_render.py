@@ -42,9 +42,9 @@ def rasterize(pts, faces, uvs, H=400, W=400):
 @tf.RegisterGradient('Rasterize')
 def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc):
     pts, faces, uvs = op.inputs
-    uvgrid, z, fids, bc = op.outputs
+    _, _, fids, bc = op.outputs
     grad_pts = MODEL.rasterize_grad(
-        pts, faces, uvs, uvgrid, z, fids, bc, grad_uvgrid, grad_z, grad_bc)
+        pts, faces, uvs, fids, bc, grad_uvgrid, grad_z)
     return grad_pts, None, None
 
 

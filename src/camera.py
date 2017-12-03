@@ -18,6 +18,12 @@ def perspective(focal, H, W, z_near=1e-2, z_far=1e2):
 
 def look_at(eye, center, up):
     ''' make a single view matrix '''
+    if isinstance(eye, (list, tuple)):
+        eye = tf.constant(eye, dtype=tf.float32)
+    if isinstance(center, (list, tuple)):
+        center = tf.constant(center, dtype=tf.float32)
+    if isinstance(up, (list, tuple)):
+        up = tf.constant(up, dtype=tf.float32)
     def _normalize(xx):
         return xx / tf.norm(xx)
 

@@ -81,8 +81,7 @@ template <typename Device> class RasterizeGradOp : public OpKernel {
   static void
   rasterize_grad_impl(int batch_size, int nfaces, int npoints, int H, int W,
                       const float *pts_data, const int32_t *faces_data,
-                      const float *uvs_data, const float *out_uvgrid_data,
-                      const float *out_z_data, const int32_t *out_fids_data,
+                      const float *uvs_data, const int32_t *out_fids_data,
                       const float *out_bc_data, const float *grad_uvgrid_data,
                       const float *grad_z_data, float *grad_pts);
 
@@ -97,25 +96,21 @@ public:
     const Tensor &uvs = context->input(2); // BxNfx3x2, float
     auto uvs_data = uvs.flat<float>().data();
 
-    const Tensor &out_uvgrid = context->input(3); // BxHxWx2, float
-    auto out_uvgrid_data = out_uvgrid.flat<float>().data();
-    const Tensor &out_z = context->input(4); // BxHxW, float
-    auto out_z_data = out_z.flat<float>().data();
-    const Tensor &out_fids = context->input(5); // BxHxW, int
+    const Tensor &out_fids = context->input(3); // BxHxW, int
     auto out_fids_data = out_fids.flat<int32_t>().data();
-    const Tensor &out_bc = context->input(6); // BxHxWx3, float
+    const Tensor &out_bc = context->input(4); // BxHxWx3, float
     auto out_bc_data = out_bc.flat<float>().data();
 
-    const Tensor &grad_uvgrid = context->input(7); // BxHxWx2, float
+    const Tensor &grad_uvgrid = context->input(5); // BxHxWx2, float
     auto grad_uvgrid_data = grad_uvgrid.flat<float>().data();
-    const Tensor &grad_z = context->input(8); // BxHxW, float
+    const Tensor &grad_z = context->input(6); // BxHxW, float
     auto grad_z_data = grad_z.flat<float>().data();
 
     int batch_size = pts.dim_size(0);
     int np = pts.dim_size(1);
     int nf = faces.dim_size(1);
-    int H = out_uvgrid.dim_size(1);
-    int W = out_uvgrid.dim_size(2);
+    int H = out_fids.dim_size(1);
+    int W = out_fids.dim_size(2);
 
     Tensor *grad_pts_ptr = nullptr;
     OP_REQUIRES_OK(context,
@@ -123,8 +118,7 @@ public:
                                             &grad_pts_ptr));
     auto grad_pts_data = grad_pts_ptr->flat<float>().data();
     rasterize_grad_impl(batch_size, nf, np, H, W, pts_data, faces_data,
-                        uvs_data, out_uvgrid_data, out_z_data, out_fids_data,
-                        out_bc_data, grad_uvgrid_data, grad_z_data,
-                        grad_pts_data);
+                        uvs_data, out_fids_data, out_bc_data, grad_uvgrid_data,
+                        grad_z_data, grad_pts_data);
   }
 };

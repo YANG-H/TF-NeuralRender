@@ -288,7 +288,6 @@ REGISTER_KERNEL_BUILDER(Name("Rasterize").Device(DEVICE_GPU),
 XDEVICE void rasterize_direct_grad_kernel(
     int global_pixel_id, int batch_size, int nfaces, int npoints, int H, int W,
     const float *pts_data, const int32_t *faces_data, const float *uvs_data,
-    const float *out_uvgrid_data, const float *out_z_data,
     const int32_t *out_fids_data, const float *out_bc_data,
     const float *grad_uvgrid_data, const float *grad_z_data, float *grad_pts) {
 
@@ -365,15 +364,13 @@ template <>
 void RasterizeGradOp<GPUDevice>::rasterize_grad_impl(
     int batch_size, int nfaces, int npoints, int H, int W,
     const float *pts_data, const int32_t *faces_data, const float *uvs_data,
-    const float *out_uvgrid_data, const float *out_z_data,
     const int32_t *out_fids_data, const float *out_bc_data,
     const float *grad_uvgrid_data, const float *grad_z_data,
     float *grad_pts_data) {
   Kernel<GPUDevice>::Launch(rasterize_direct_grad_kernel, batch_size * H * W,
                             batch_size, nfaces, npoints, H, W, pts_data,
-                            faces_data, uvs_data, out_uvgrid_data, out_z_data,
-                            out_fids_data, out_bc_data, grad_uvgrid_data,
-                            grad_z_data, grad_pts_data);
+                            faces_data, uvs_data, out_fids_data, out_bc_data,
+                            grad_uvgrid_data, grad_z_data, grad_pts_data);
 }
 
 REGISTER_KERNEL_BUILDER(Name("RasterizeGrad").Device(DEVICE_GPU),
