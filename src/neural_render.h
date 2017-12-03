@@ -20,7 +20,7 @@ public:
   }
 
   void Compute(OpKernelContext *context) override {
-    LOG(INFO) << "begin rasterize";
+    //    LOG(INFO) << "begin rasterize";
     const Tensor &pts = context->input(0); // BxNpx3, float, device coord
     auto pts_data = pts.flat<float>().data();
     const Tensor &faces = context->input(1); // BxNfx3, int
@@ -70,7 +70,7 @@ public:
     int W = screen_shape_.dim_size(1);
     rasterize_impl(batch_size, np, nf, pts_data, faces_data, uvs_data, H, W,
                    out_uvgrid_data, out_z_data, out_fids_data, out_bc_data);
-    LOG(INFO) << "done rasterize";
+    //    LOG(INFO) << "done rasterize";
   }
 
 private:
@@ -91,7 +91,7 @@ public:
   explicit RasterizeGradOp(OpKernelConstruction *context) : OpKernel(context) {}
 
   void Compute(OpKernelContext *context) override {
-    LOG(INFO) << "begin rasterize_grad";
+    //    LOG(INFO) << "begin rasterize_grad";
     const Tensor &pts = context->input(0); // BxNpx3, float
     auto pts_data = pts.flat<float>().data();
     const Tensor &faces = context->input(1); // BxNfx3, int
@@ -123,6 +123,6 @@ public:
     rasterize_grad_impl(batch_size, nf, np, H, W, pts_data, faces_data,
                         uvs_data, out_fids_data, out_bc_data, grad_uvgrid_data,
                         grad_z_data, grad_pts_data);
-    LOG(INFO) << "done rasterize_grad";
+    //    LOG(INFO) << "done rasterize_grad";
   }
 };

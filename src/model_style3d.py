@@ -3,6 +3,7 @@ import sys
 import time
 import math
 import functools
+import shutil
 import tensorflow as tf
 import numpy as np
 import pymesh as pm
@@ -21,11 +22,11 @@ DEVICES = 'CUDA_VISIBLE_DEVICES'
 
 def _make_uvs(nfaces):
     uvs = tf.stack([tf.range(1, nfaces + 1, dtype=tf.float32) / (nfaces),
-                    tf.zeros([nfaces], dtype=tf.float32),
+                    tf.zeros([nfaces], dtype=tf.float32) + 0.1,
                     tf.range(1, nfaces + 1, dtype=tf.float32) / (nfaces),
-                    tf.ones([nfaces], dtype=tf.float32),
+                    tf.ones([nfaces], dtype=tf.float32) - 0.1,
                     tf.range(0, nfaces, dtype=tf.float32) / (nfaces),
-                    tf.ones([nfaces], dtype=tf.float32)])
+                    tf.ones([nfaces], dtype=tf.float32) - 0.1])
     uvs = tf.transpose(uvs, [1, 0])  # nfaces x 6
     uvs = tf.reshape(uvs, [nfaces, 3, 2])  # nfaces x 3 x 2
     return uvs
@@ -47,6 +48,8 @@ def optimize(content_targets_pts, faces,  # single mesh
 
     assert len(content_targets_pts.shape) == 2
     assert len(faces.shape) == 2
+    print('npoints=%d, nfaces=%d' %
+          (content_targets_pts.shape[0], faces.shape[0]))
 
     batch_size = ncams
 
@@ -76,7 +79,8 @@ def optimize(content_targets_pts, faces,  # single mesh
             initial_value=content_targets_pts, trainable=True,
             dtype=tf.float32)
         pred_tex = tf.Variable(
-            initial_value=tf.random_normal((5, 5 * faces.shape[0], 3)) * 0.256,
+            initial_value=tf.random_normal(
+                (32, 32 * faces.shape[0], 3)) * 0.256,
             trainable=True, dtype=tf.float32)
 
         # content(shape) loss
@@ -97,19 +101,23 @@ def optimize(content_targets_pts, faces,  # single mesh
 
         def _make_modelview(i):
             return camera.look_at(
-                eye=[math.cos(i / ncams * math.pi * 2),
-                     math.sin(i / ncams * math.pi * 2), 1],
+                eye=np.array([math.cos(i / ncams * math.pi * 2) * 3,
+                              math.sin(i / ncams * math.pi * 2) * 3, 2]),
                 center=[0, 0, 0], up=[0, 0, 1])
         modelviews = tf.stack([_make_modelview(i) for i in range(ncams)])
-        projs = tf.tile(tf.expand_dims(camera.perspective(focal=300, H=255, W=255), axis=0),
-                        [ncams, 1, 1])
+        projs = tf.tile(tf.expand_dims(
+            camera.perspective(focal=200, H=255, W=255), axis=0),
+            [ncams, 1, 1])
 
         pred_rendered, uvgrid, z, fids, bc = nr.render(
             pts=pred_pts_batched, faces=faces_batched, uvs=uvs_batched,
             tex=pred_tex_batched, modelview=modelviews, proj=projs,
-            H=255, W=255)  # batch_size x 255 x 255 x 3
+            H=512, W=512)  # batch_size x 255 x 255 x 3
+        pooled_pred_rendered = tf.nn.avg_pool(
+            pred_rendered, ksize=[1, 4, 4, 1],
+            strides=[1, 2, 2, 1], padding='VALID')
 
-        net = vgg.net(vgg_path, pred_rendered)
+        net = vgg.net(vgg_path, pooled_pred_rendered)
 
         style_losses = []
         for style_layer in STYLE_LAYERS:
@@ -126,23 +134,34 @@ def optimize(content_targets_pts, faces,  # single mesh
         style_loss = style_weight * \
             functools.reduce(tf.add, style_losses) / batch_size
 
-        # # total variation denoising
-        # tv_y_size = _tensor_size(preds[:, 1:, :, :])
-        # tv_x_size = _tensor_size(preds[:, :, 1:, :])
-        # y_tv = tf.nn.l2_loss(preds[:, 1:, :, :] -
-        #                      preds[:, :batch_shape[1] - 1, :, :])
-        # x_tv = tf.nn.l2_loss(preds[:, :, 1:, :] -
-        #                      preds[:, :, :batch_shape[2] - 1, :])
-        # tv_loss = tv_weight * 2 * \
-        #     (x_tv / tv_x_size + y_tv / tv_y_size) / batch_size
+        # total variation denoising
+        tv_y_size = _tensor_size(pred_tex[1:, :, :])
+        tv_x_size = _tensor_size(pred_tex[:, 1:, :])
+        y_tv = tf.nn.l2_loss(pred_tex[1:, :, :] -
+                             pred_tex[:pred_tex.shape[0] - 1, :, :])
+        x_tv = tf.nn.l2_loss(pred_tex[:, 1:, :] -
+                             pred_tex[:, :pred_tex.shape[1] - 1, :])
+        tv_loss = tv_weight * 2 * \
+            (x_tv / tv_x_size + y_tv / tv_y_size)
 
-        loss = content_loss + style_loss
+        loss = content_loss + style_loss + tv_loss
 
+        # summary
         tf.summary.scalar("loss", loss)
         tf.summary.scalar("content_loss", content_loss)
         tf.summary.scalar("style_loss", style_loss)
-        tf.summary.image("rendered", pred_rendered)        
+        tf.summary.scalar("tv_loss", tv_loss)
+        # for i in range(0, pred_rendered.shape[0], 3):
+        #     tf.summary.image(
+        #         "rendered_%d-%d" % (i, min(i + 2, pred_rendered.shape[0] - 1)),
+        #         pred_rendered[i:min(i + 3, pred_rendered.shape[0]), :, :, :])
+        tf.summary.image("rendered", pred_rendered)
+        tf.summary.image("pred_tex", tf.expand_dims(pred_tex, axis=0))
         merged_summary_op = tf.summary.merge_all()
+
+        if os.path.exists(log_dir):
+            shutil.rmtree(log_dir)
+
         summary_writer = tf.summary.FileWriter(
             log_dir, graph=tf.get_default_graph())
         summary_writer.add_graph(tf.get_default_graph())
@@ -152,16 +171,21 @@ def optimize(content_targets_pts, faces,  # single mesh
         sess.run(tf.global_variables_initializer())
         for epoch in range(epochs):
             start_time = time.time()
-            _, summary = sess.run([train_step, merged_summary_op], feed_dict={
-                                  X_pts: content_targets_pts})
+            _, l, cl, sl, summary = sess.run(
+                [train_step, loss, content_loss, style_loss,
+                 merged_summary_op],
+                feed_dict={X_pts: content_targets_pts})
             end_time = time.time()
             delta_time = end_time - start_time
-            print('%d: time cost=%f seconds' % (epoch, delta_time))
-            summary_writer.add_summary(summary, epoch)
+            if epoch % 10 == 0:
+                print('%d: loss=%f, content_loss=%f, style_loss=%f, '
+                      'time cost=%f seconds' % (
+                          epoch, l, cl, sl, delta_time))
+                summary_writer.add_summary(summary, epoch)
 
 
 def main():
-    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'cube.obj'))
+    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
     # mesh = pm.meshutils.generate_icosphere(radius=1, center=np.zeros([3]))
     print(mesh.bbox)
     bmin, bmax = mesh.bbox
@@ -169,13 +193,15 @@ def main():
     pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
                                        axis=0), [mesh.num_vertices, 1])
     pts = pts / np.max(np.linalg.norm(pts, axis=1))
+    pts = pts[:, [0, 2, 1]]
     faces = mesh.faces
 
     style_img = ndimage.imread(os.path.join(misc.DATA_DIR, 'style', 'wave.jpg'),
                                mode='RGB')
 
-    optimize(pts, faces, 4, style_img, 
-             content_weight=10, style_weight=100, tv_weight=0)
+    optimize(pts, faces, 8, style_img,
+             content_weight=1e5, style_weight=1e-6, tv_weight=5e-7,
+             epochs=10000, learning_rate=1e-3)
 
 
 if __name__ == '__main__':
