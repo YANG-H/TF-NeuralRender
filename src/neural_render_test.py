@@ -31,9 +31,9 @@ def main():
                             center=tf.constant([0, 0, 0], dtype='float32'),
                             up=tf.constant([0, 0, -1], dtype='float32'))
         mv = tf.expand_dims(mv, axis=0)
-        H = 3200
-        W = 3200
-        proj = camera.perspective(focal=3200, H=H, W=W)
+        H = 300
+        W = 300
+        proj = camera.perspective(focal=300, H=H, W=W)
         proj = tf.expand_dims(proj, axis=0)
 
         n = 1
