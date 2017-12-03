@@ -25,7 +25,7 @@ def main():
     pts = pts / np.max(np.linalg.norm(pts, axis=1))
     print(np.max(pts, axis=0), np.min(pts, axis=0))
 
-    pts = np.expand_dims(mesh.vertices, 0).astype('float32')
+    pts = np.expand_dims(pts, 0).astype('float32')
     # pts = pts / 10.0
     faces = np.expand_dims(mesh.faces, 0).astype('int32')
     uvs = np.array([[[[0, 0], [0, 1], [1, 0]]]], dtype='float32')
@@ -34,16 +34,16 @@ def main():
     tex = np.expand_dims(tex, axis=0).astype('float32') / 255.0
 
     with tf.Session() as session:
-        mv = camera.look_at(eye=tf.constant([2, 3, 4], dtype='float32'),
+        mv = camera.look_at(eye=tf.constant([2, 4, 4], dtype='float32'),
                             center=tf.constant([0, 0, 0], dtype='float32'),
-                            up=tf.constant([0, 0, -1], dtype='float32'))
+                            up=tf.constant([0, 0, 1], dtype='float32'))
         mv = tf.expand_dims(mv, axis=0)
-        H = 3200
-        W = 3200
-        proj = camera.perspective(focal=3500, H=H, W=W)
+        H = 1600
+        W = 1600
+        proj = camera.perspective(focal=2000, H=H, W=W)
         proj = tf.expand_dims(proj, axis=0)
 
-        n = 1
+        n = 3
         rendered, uvgrid, z, fids, bc = session.run(
             nr.render(pts=tf.tile(pts, [n, 1, 1]),
                       faces=tf.tile(faces, [n, 1, 1]),
@@ -53,10 +53,11 @@ def main():
                       proj=tf.tile(proj, [n, 1, 1]),
                       H=H, W=W))
         print('rendering done')
+        # session.run(nr._rasterize_grad())
 
     print(np.min(fids))
     plt.figure()
-    plt.imshow(rendered[0, :, :, :])
+    plt.imshow(fids[-1, :, :])
     plt.show()
 
 
