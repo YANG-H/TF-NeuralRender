@@ -24,6 +24,7 @@ def look_at(eye, center, up):
         center = tf.constant(center, dtype=tf.float32)
     if isinstance(up, (list, tuple)):
         up = tf.constant(up, dtype=tf.float32)
+
     def _normalize(xx):
         return xx / tf.norm(xx)
 
@@ -45,6 +46,40 @@ def look_at(eye, center, up):
                              [y[0], y[1], y[2], b],
                              [-z[0], -z[1], -z[2], c],
                              [0, 0, 0, 1]]), tf.float32)
+
+
+def batched_look_at(eye, center, up):
+    ''' make batched view matrices '''
+    def _normalize(xx):
+        return xx / tf.norm(xx, axis=-1, keep_dims=True)
+
+    z = _normalize(center - eye)
+    x = _normalize(tf.cross(up, z))
+    y = tf.cross(z, x)
+
+    # [-x0 -x1 -x2 a]
+    # [ y0  y1  y2 b]
+    # [-z0 -z1 -z2 c]
+    # [  0   0   0 1]
+
+    def _dot(xx, yy):
+        return tf.reduce_sum(xx * yy, axis=-1, keep_dims=True)
+    a = _dot(x, eye)
+    b = -_dot(y, eye)
+    c = _dot(z, eye)
+    flat = tf.concat([-x, a,
+                      y, b,
+                      -z, c,
+                      tf.tile(
+                          tf.constant([[0, 0, 0, 1]],
+                                      dtype=tf.float32),
+                          [eye.shape[0], 1])], axis=-1)
+    assert flat.shape[0] == eye.shape[0] and flat.shape[1] == 16
+    mats = tf.cast(tf.reshape(flat, [eye.shape[0], 4, 4]),
+                   tf.float32)
+    assert mats.shape[0] == eye.shape[0]
+    assert mats.shape[1] == 4 and mats.shape[2] == 4
+    return mats
 
 
 def apply_transform(pts, modelview, proj):
