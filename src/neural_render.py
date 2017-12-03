@@ -14,8 +14,7 @@ MODEL = tf.load_op_library(os.path.join(
     BASE_DIR, 'qt_build_release', 'libTFNeuralRenderOps.so'))
 
 
-@misc.profile
-def rasterize(pts, faces, uvs, H=400, W=400):
+def rasterize(pts, faces, uvs, H=400, W=400, **kwargs):
     ''' rasterize
     Input
     ---
@@ -35,16 +34,16 @@ def rasterize(pts, faces, uvs, H=400, W=400):
     assert faces.shape[1] == uvs.shape[1]
     assert faces.shape[2] == 3
     assert uvs.shape[2] == 3 and uvs.shape[3] == 2
-    uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H=H, W=W)
+    uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H=H, W=W, **kwargs)
     return uvgrid, z, fids, bc
 
 
 @tf.RegisterGradient('Rasterize')
-def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc):
+def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc, **kwargs):
     pts, faces, uvs = op.inputs
     _, _, fids, bc = op.outputs
     grad_pts = MODEL.rasterize_grad(
-        pts, faces, uvs, fids, bc, grad_uvgrid, grad_z)
+        pts, faces, uvs, fids, bc, grad_uvgrid, grad_z, **kwargs)
     return grad_pts, None, None
 
 

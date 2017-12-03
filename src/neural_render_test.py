@@ -14,9 +14,9 @@ import neural_render as nr
 
 
 def main():
-    # mesh = pm.meshutils.generate_icosphere(
-    #     radius=1, center=np.array([0, 0, 0]))
-    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
+    mesh = pm.meshutils.generate_icosphere(
+        radius=1, center=np.array([0, 0, 0]))
+    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
     print(mesh.bbox)
     bmin, bmax = mesh.bbox
     pts = mesh.vertices

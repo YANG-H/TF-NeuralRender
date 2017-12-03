@@ -76,6 +76,9 @@ XINLINE void add_barycentric_coord_grad(const T *p, const T *a, const T *b,
   T cx = c[0], cy = c[1];
   T px = p[0], py = p[1];
   T s = ax * by - ay * bx - ax * cy + ay * cx + bx * cy - by * cx;
+  if (abs(s) < 1e-6) {
+    return;
+  }
   // we ignored the higher order residues
   T grad_ax = grad_bc[1] * (cy - py) / (-s) + grad_bc[2] * (by - py) / s;
   T grad_ay = grad_bc[1] * (-cx + px) / (-s) + grad_bc[2] * (-bx + px) / s;
@@ -287,9 +290,15 @@ REGISTER_KERNEL_BUILDER(Name("Rasterize").Device(DEVICE_GPU),
 // a simple version of grad
 XDEVICE void rasterize_direct_grad_kernel(
     int global_pixel_id, int batch_size, int nfaces, int npoints, int H, int W,
-    const float *pts_data, const int32_t *faces_data, const float *uvs_data,
-    const int32_t *out_fids_data, const float *out_bc_data,
-    const float *grad_uvgrid_data, const float *grad_z_data, float *grad_pts) {
+    const float *pts_data,         // batch_size x npoints x 3
+    const int32_t *faces_data,     // batch_size x nfaces x 3
+    const float *uvs_data,         // batch_size x nfaces x 3 x 2
+    const int32_t *out_fids_data,  // batch_size x H x W
+    const float *out_bc_data,      // batch_size x H x W x 3
+    const float *grad_uvgrid_data, // batch_size x H x W x 2
+    const float *grad_z_data,      // batch_size x H x W
+    float *grad_pts                // batch_size x npoints x 3
+    ) {
 
   if (global_pixel_id >= batch_size * H * W) { // not a valid pixel here
     return;

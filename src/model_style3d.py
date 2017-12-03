@@ -76,7 +76,7 @@ def optimize(content_targets_pts, faces,  # single mesh
             initial_value=content_targets_pts, trainable=True,
             dtype=tf.float32)
         pred_tex = tf.Variable(
-            initial_value=tf.random_normal((500, 500, 3)) * 0.256,
+            initial_value=tf.random_normal((5, 5 * faces.shape[0], 3)) * 0.256,
             trainable=True, dtype=tf.float32)
 
         # content(shape) loss
@@ -145,6 +145,7 @@ def optimize(content_targets_pts, faces,  # single mesh
         merged_summary_op = tf.summary.merge_all()
         summary_writer = tf.summary.FileWriter(
             log_dir, graph=tf.get_default_graph())
+        summary_writer.add_graph(tf.get_default_graph())
 
         # overall loss
         train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -160,8 +161,8 @@ def optimize(content_targets_pts, faces,  # single mesh
 
 
 def main():
-    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
-    mesh = pm.meshutils.generate_icosphere(radius=1, center=np.zeros([3]))
+    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'cube.obj'))
+    # mesh = pm.meshutils.generate_icosphere(radius=1, center=np.zeros([3]))
     print(mesh.bbox)
     bmin, bmax = mesh.bbox
     pts = mesh.vertices
