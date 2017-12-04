@@ -14,6 +14,18 @@ MODEL = tf.load_op_library(os.path.join(
     BASE_DIR, 'qt_build_release', 'libTFNeuralRenderOps.so'))
 
 
+def make_uvs(nfaces):
+    uvs = tf.stack([tf.range(1, nfaces + 1, dtype=tf.float32) / (nfaces),
+                    tf.zeros([nfaces], dtype=tf.float32) + 0.1,
+                    tf.range(1, nfaces + 1, dtype=tf.float32) / (nfaces),
+                    tf.ones([nfaces], dtype=tf.float32) - 0.1,
+                    tf.range(0, nfaces, dtype=tf.float32) / (nfaces),
+                    tf.ones([nfaces], dtype=tf.float32) - 0.1])
+    uvs = tf.transpose(uvs, [1, 0])  # nfaces x 6
+    uvs = tf.reshape(uvs, [nfaces, 3, 2])  # nfaces x 3 x 2
+    return uvs
+
+
 def rasterize(pts, faces, uvs, H=400, W=400, **kwargs):
     ''' rasterize
     Input
@@ -47,6 +59,7 @@ def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc, **kwargs):
     return grad_pts, None, None
 
 
+
 def render(pts, faces, uvs, tex, modelview, proj, H, W):
     ''' render textured mesh to image
     Input
@@ -67,6 +80,7 @@ def render(pts, faces, uvs, tex, modelview, proj, H, W):
     - `bc`: BxHxWx3, barycentric coordinates
     '''
     pts = camera.apply_transform(pts, modelview, proj)
-    uvgrid, z, fids, bc = rasterize(pts, faces, uvs, H, W)
-    rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
+    uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H, W)
+    rendered = MODEL.bilinear_sample(tex, uvgrid)
+    # rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
     return rendered, uvgrid, z, fids, bc

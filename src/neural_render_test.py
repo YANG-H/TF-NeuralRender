@@ -14,22 +14,25 @@ import neural_render as nr
 
 
 def main():
-    mesh = pm.meshutils.generate_icosphere(
-        radius=1, center=np.array([0, 0, 0]))
-    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
+    # mesh = pm.meshutils.generate_icosphere(
+        # radius=1, center=np.array([0, 0, 0]))
+    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'bunny.obj'))
     print(mesh.bbox)
     bmin, bmax = mesh.bbox
     pts = mesh.vertices
     pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
                                        axis=0), [mesh.num_vertices, 1])
     pts = pts / np.max(np.linalg.norm(pts, axis=1))
+    pts = pts[:, [0, 2, 1]]
     print(np.max(pts, axis=0), np.min(pts, axis=0))
 
     pts = np.expand_dims(pts, 0).astype('float32')
     # pts = pts / 10.0
     faces = np.expand_dims(mesh.faces, 0).astype('int32')
-    uvs = np.array([[[[0, 0], [0, 1], [1, 0]]]], dtype='float32')
-    uvs = np.tile(uvs, reps=tuple(faces.shape[:2]) + (1, 1))
+    uvs = nr.make_uvs(mesh.num_faces)
+    # uvs = np.tile(uvs, reps=tuple(faces.shape[:2]) + (1, 1))
+    with tf.Session() as session:
+        uvs = np.expand_dims(session.run(uvs), axis=0)
     tex = ndimage.imread(os.path.join(misc.DATA_DIR, 'chessboard.jpg'))
     tex = np.expand_dims(tex, axis=0).astype('float32') / 255.0
 
@@ -57,7 +60,7 @@ def main():
 
     print(np.min(fids))
     plt.figure()
-    plt.imshow(fids[-1, :, :])
+    plt.imshow(rendered[-1, :, :, :])
     plt.show()
 
 

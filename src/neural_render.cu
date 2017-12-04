@@ -400,3 +400,55 @@ void RasterizeGradOp<GPUDevice>::rasterize_grad_impl(
 
 REGISTER_KERNEL_BUILDER(Name("RasterizeGrad").Device(DEVICE_GPU),
                         RasterizeGradOp<GPUDevice>)
+
+struct bilinear_sample_kernel {
+  XINLINE void operator()(int idx, // BxHxW
+                          int batch_size, int Ht, int Wt, int Dt, int H, int W,
+                          const float *tex_data, // BxHtxWtxDt
+                          const float *uvgrid_data, float *out_data) const {
+    int batch_id = idx / W / H % batch_size;
+
+    float u = uvgrid_data[idx * 2 + 0];
+    float v = uvgrid_data[idx * 2 + 1];
+    float uu_real = u * (Wt - 1) + 0.5;
+    float vv_real = v * (Ht - 1) + 0.5;
+    int uu = static_cast<int>(floorf(uu_real));
+    int vv = static_cast<int>(floorf(vv_real));
+
+    int uu2 = uu + 1;
+    int vv2 = vv + 1;
+
+    float uu_w = uu_real - uu;
+    float vv_w = vv_real - vv;
+
+    uu = min(Wt - 1, max(0, uu));
+    vv = min(Ht - 1, max(0, vv));
+    uu2 = min(Wt - 1, max(0, uu2));
+    vv2 = min(Ht - 1, max(0, vv2));
+
+    int tid_topleft = (batch_id * Ht + vv) * Wt + uu;
+    int tid_bottomright = (batch_id * Ht + vv2) * Wt + uu2;
+    int tid_topright = (batch_id * Ht + vv) * Wt + uu2;
+    int tid_bottomleft = (batch_id * Ht + vv2) * Wt + uu;
+    for (int k = 0; k < Dt; k++) {
+      float color = tex_data[tid_topleft * Dt + k] * (1 - uu_w) * (1 - vv_w) +
+                    tex_data[tid_topright * Dt + k] * uu_w * (1 - vv_w) +
+                    tex_data[tid_bottomleft * Dt + k] * (1 - uu_w) * vv_w +
+                    tex_data[tid_bottomright * Dt + k] * uu_w * vv_w;
+      out_data[idx * Dt + k] = color;
+    }
+  }
+};
+
+template <>
+void BilinearSampleOp<GPUDevice>::impl(int batch_size, int Ht, int Wt, int Dt,
+                                       int H, int W, const float *tex_data,
+                                       const float *uvgrid_data,
+                                       float *out_data) {
+  Kernel<GPUDevice>::Launch(bilinear_sample_kernel(), batch_size * H * W,
+                            batch_size, Ht, Wt, Dt, H, W, tex_data, uvgrid_data,
+                            out_data);
+}
+
+REGISTER_KERNEL_BUILDER(Name("BilinearSample").Device(DEVICE_GPU),
+                        BilinearSampleOp<GPUDevice>)

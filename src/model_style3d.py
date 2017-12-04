@@ -21,18 +21,6 @@ CONTENT_LAYER = 'relu4_2'
 DEVICES = 'CUDA_VISIBLE_DEVICES'
 
 
-def _make_uvs(nfaces):
-    uvs = tf.stack([tf.range(1, nfaces + 1, dtype=tf.float32) / (nfaces),
-                    tf.zeros([nfaces], dtype=tf.float32) + 0.1,
-                    tf.range(1, nfaces + 1, dtype=tf.float32) / (nfaces),
-                    tf.ones([nfaces], dtype=tf.float32) - 0.1,
-                    tf.range(0, nfaces, dtype=tf.float32) / (nfaces),
-                    tf.ones([nfaces], dtype=tf.float32) - 0.1])
-    uvs = tf.transpose(uvs, [1, 0])  # nfaces x 6
-    uvs = tf.reshape(uvs, [nfaces, 3, 2])  # nfaces x 3 x 2
-    return uvs
-
-
 def _tensor_size(tensor):
     from operator import mul
     return functools.reduce(mul, (d.value for d in tensor.get_shape()[1:]), 1)
@@ -45,7 +33,7 @@ def optimize(content_targets_pts, faces,  # single mesh
              vgg_path=os.path.join(misc.DATA_DIR, 'VGG',
                                    'imagenet-vgg-verydeep-19.mat'),
              log_dir=os.path.join(misc.BASE_DIR, 'log'),
-             learning_rate=1e-3, tex_unit_size=10):
+             learning_rate=1e-3, tex_unit_size=10, subsample=4):
 
     assert len(content_targets_pts.shape) == 2
     assert len(faces.shape) == 2
@@ -104,24 +92,9 @@ def optimize(content_targets_pts, faces,  # single mesh
         view_angles = tf.random_uniform(
             [ncams, 1], minval=0, maxval=1, dtype=tf.float32)
         view_dists = tf.random_uniform(
-            [ncams, 1], minval=2, maxval=5, dtype=tf.float32)
+            [ncams, 1], minval=1, maxval=3, dtype=tf.float32)
         view_hs = tf.random_uniform(
-            [ncams, 1], minval=0, maxval=5, dtype=tf.float32)
-
-        # def _make_modelview(i):
-        #     # angle = i / ncams * math.pi * 2
-        #     # dist = 3
-        #     # h = 2
-        #     # angle = random.uniform(0, 1)
-        #     # dist = max(random.normalvariate(3, 0.1), 2)
-        #     # h = max(random.normalvariate(2, 0.1), 0.5)
-        #     return camera.look_at(
-        #         eye=np.array([math.cos(view_angles[i] *
-        #                                math.pi * 2) * view_dists[i],
-        #                       math.sin(view_angles[i] *
-        #                                math.pi * 2) * view_dists[i],
-        #                       view_hs[i]]),
-        #         center=[0, 0, 0], up=[0, 0, 1])
+            [ncams, 1], minval=-1, maxval=5, dtype=tf.float32)
         modelviews = camera.batched_look_at(
             eye=tf.concat([tf.cos(view_angles * math.pi * 2) * view_dists,
                            tf.sin(view_angles * math.pi * 2) * view_dists,
@@ -138,12 +111,12 @@ def optimize(content_targets_pts, faces,  # single mesh
         pred_rendered, uvgrid, z, fids, bc = nr.render(
             pts=pred_pts_batched, faces=faces_batched, uvs=uvs_batched,
             tex=pred_tex_batched, modelview=modelviews, proj=projs,
-            H=255, W=255)  # batch_size x 255 x 255 x 3
-        # pooled_pred_rendered = tf.nn.avg_pool(
-        #     pred_rendered, ksize=[1, 4, 4, 1],
-        #     strides=[1, 2, 2, 1], padding='VALID')
+            H=255 * subsample, W=255 * subsample)  # batch_size x 255 x 255 x 3
+        pooled_pred_rendered = tf.nn.avg_pool(
+            pred_rendered, ksize=[1, subsample, subsample, 1],
+            strides=[1, subsample, subsample, 1], padding='VALID')
 
-        net = vgg.net(vgg_path, pred_rendered)
+        net = vgg.net(vgg_path, pooled_pred_rendered)
 
         style_losses = []
         for style_layer in STYLE_LAYERS:
@@ -178,7 +151,8 @@ def optimize(content_targets_pts, faces,  # single mesh
         tf.summary.scalar("style_loss", style_loss)
         tf.summary.scalar("tv_loss", tv_loss)
         tf.summary.image("rendered", pred_rendered)
-        tf.summary.image("pred_tex", tf.expand_dims(pred_tex, axis=0))
+        tf.summary.image("pooled_rendered", pooled_pred_rendered)
+        tf.summary.image("tex", tf.expand_dims(pred_tex, axis=0))
         merged_summary_op = tf.summary.merge_all()
 
         if os.path.exists(log_dir):
@@ -209,8 +183,8 @@ def optimize(content_targets_pts, faces,  # single mesh
 
 
 def main():
-    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'teapot.obj'))
-    mesh = pm.meshutils.generate_icosphere(radius=1, center=np.zeros([3]))
+    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'bunny.obj'))
+    # mesh = pm.meshutils.generate_icosphere(radius=1, center=np.zeros([3]))
     print(mesh.bbox)
     bmin, bmax = mesh.bbox
     pts = mesh.vertices
@@ -225,8 +199,9 @@ def main():
 
     optimize(pts, faces, 8, style_img,
              content_weight=0, style_weight=1e-1, tv_weight=0,
-             epochs=50000, learning_rate=1e-1, tex_unit_size=32,
-             log_dir=os.path.join(misc.BASE_DIR, 'log_icosphere'))
+             epochs=50000, learning_rate=1e-1, tex_unit_size=4,
+             subsample=4,
+             log_dir=os.path.join(misc.BASE_DIR, 'log_bunny'))
 
 
 if __name__ == '__main__':

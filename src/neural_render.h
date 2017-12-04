@@ -20,7 +20,7 @@ public:
   }
 
   void Compute(OpKernelContext *context) override {
-    //    LOG(INFO) << "begin rasterize";
+    LOG(INFO) << "begin rasterize";
     const Tensor &pts = context->input(0); // BxNpx3, float, device coord
     auto pts_data = pts.flat<float>().data();
     const Tensor &faces = context->input(1); // BxNfx3, int
@@ -70,7 +70,7 @@ public:
     int W = screen_shape_.dim_size(1);
     rasterize_impl(batch_size, np, nf, pts_data, faces_data, uvs_data, H, W,
                    out_uvgrid_data, out_z_data, out_fids_data, out_bc_data);
-    //    LOG(INFO) << "done rasterize";
+    LOG(INFO) << "done rasterize";
   }
 
 private:
@@ -91,7 +91,7 @@ public:
   explicit RasterizeGradOp(OpKernelConstruction *context) : OpKernel(context) {}
 
   void Compute(OpKernelContext *context) override {
-    //    LOG(INFO) << "begin rasterize_grad";
+    LOG(INFO) << "begin rasterize_grad";
     const Tensor &pts = context->input(0); // BxNpx3, float
     auto pts_data = pts.flat<float>().data();
     const Tensor &faces = context->input(1); // BxNfx3, int
@@ -123,6 +123,40 @@ public:
     rasterize_grad_impl(batch_size, nf, np, H, W, pts_data, faces_data,
                         uvs_data, out_fids_data, out_bc_data, grad_uvgrid_data,
                         grad_z_data, grad_pts_data);
-    //    LOG(INFO) << "done rasterize_grad";
+    LOG(INFO) << "done rasterize_grad";
+  }
+};
+
+// sampled = bilinear_sample(tex, uvgrid)
+template <typename Device> class BilinearSampleOp : public OpKernel {
+  static void impl(int batch_size, int Ht, int Wt, int Dt, int H, int W,
+                   const float *tex_data, const float *uvgrid_data,
+                   float *out_data);
+
+public:
+  explicit BilinearSampleOp(OpKernelConstruction *context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext *context) override {
+    LOG(INFO) << "begin bilinear_sample";
+    const Tensor &tex = context->input(0); // BxHtxWtxDt, float
+    auto tex_data = tex.flat<float>().data();
+    const Tensor &uvgrid = context->input(0); // BxHxWx2, float
+    auto uvgrid_data = uvgrid.flat<float>().data();
+
+    int batch_size = tex.dim_size(0);
+    int Ht = tex.dim_size(1);
+    int Wt = tex.dim_size(2);
+    int Dt = tex.dim_size(3);
+    int H = uvgrid.dim_size(1);
+    int W = uvgrid.dim_size(2);
+
+    Tensor *out_ptr = nullptr;
+    OP_REQUIRES_OK(
+        context, context->allocate_output(0, TensorShape{batch_size, H, W, Dt},
+                                          &out_ptr));
+    auto out_data = out_ptr->flat<float>().data();
+    impl(batch_size, Ht, Wt, Dt, H, W, tex_data, uvgrid_data, out_data);
+    LOG(INFO) << "done bilinear_sample";
   }
 };

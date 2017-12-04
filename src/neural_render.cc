@@ -36,3 +36,16 @@ REGISTER_OP("RasterizeGrad")
       c->set_output(0, c->input(0));
       return Status::OK();
     });
+
+REGISTER_OP("BilinearSample")
+    .Input("tex: float32")
+    .Input("uvgrid: float32")
+    .Output("out: float32")
+    .SetShapeFn([](shape_inference::InferenceContext *c) {
+      auto batch_size = c->Dim(c->input(0), 0);
+      auto H = c->Dim(c->input(1), 1);
+      auto W = c->Dim(c->input(1), 2);
+      auto Dt = c->Dim(c->input(0), 3);
+      c->set_output(0, c->MakeShape({batch_size, H, W, Dt})); // out
+      return Status::OK();
+    });
