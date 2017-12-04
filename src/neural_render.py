@@ -33,7 +33,7 @@ def rasterize(pts, faces, uvs, H=400, W=400, **kwargs):
     - `pts`: BxNpx3 float32
     - `faces`:  BxNfx3 int32
     - `uvs`: BxNfx3x2 float32
-    
+
     Output
     ---
     - `uvgrid`: BxHxWx2
@@ -59,7 +59,6 @@ def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc, **kwargs):
     return grad_pts, None, None
 
 
-
 def render(pts, faces, uvs, tex, modelview, proj, H, W):
     ''' render textured mesh to image
     Input
@@ -70,7 +69,7 @@ def render(pts, faces, uvs, tex, modelview, proj, H, W):
     - `tex`: BxHtxWtxD, float32
     - `modelview`: Bx4x4, float32
     - `proj`: Bx4x4, float32
-    
+
     Output
     ---
     - `rendered`: BxHxWxD, float32
@@ -81,6 +80,6 @@ def render(pts, faces, uvs, tex, modelview, proj, H, W):
     '''
     pts = camera.apply_transform(pts, modelview, proj)
     uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H, W)
-    rendered = MODEL.bilinear_sample(tex, uvgrid)
-    # rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
+    # rendered = MODEL.bilinear_sample(tex, uvgrid)
+    rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
     return rendered, uvgrid, z, fids, bc

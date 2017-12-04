@@ -9,32 +9,23 @@ import matplotlib.pyplot as plt
 from scipy import ndimage
 
 import misc
+import mesh
 import camera
 import neural_render as nr
 
 
 def main():
-    mesh = pm.meshutils.generate_icosphere(
-        radius=1, center=np.array([0, 0, 0]))
-    # mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'bunny.obj'))
-    print(mesh.bbox)
-    bmin, bmax = mesh.bbox
-    pts = mesh.vertices
-    pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
-                                       axis=0), [mesh.num_vertices, 1])
-    pts = pts / np.max(np.linalg.norm(pts, axis=1))
-    pts = pts[:, [0, 2, 1]]
-    print(np.max(pts, axis=0), np.min(pts, axis=0))
+    m = pm.generate_icosphere(1, [0, 0, 0])
+    pts, faces = m.vertices, m.faces
+    uvs = mesh.gen_fake_uv(faces.shape[0])
 
     pts = np.expand_dims(pts, 0).astype('float32')
-    # pts = pts / 10.0
-    faces = np.expand_dims(mesh.faces, 0).astype('int32')
-    uvs = nr.make_uvs(mesh.num_faces)
-    # uvs = np.tile(uvs, reps=tuple(faces.shape[:2]) + (1, 1))
-    with tf.Session() as session:
-        uvs = np.expand_dims(session.run(uvs), axis=0)
+    faces = np.expand_dims(faces, 0).astype('int32')
+    uvs = np.expand_dims(uvs, 0).astype('float32')
+
     tex = ndimage.imread(os.path.join(misc.DATA_DIR, 'chessboard.jpg'))
     tex = np.expand_dims(tex, axis=0).astype('float32') / 255.0
+    tex[:, 0, 0, :] = 0
 
     with tf.Session() as session:
         mv = camera.look_at(eye=tf.constant([2, 4, 4], dtype='float32'),
@@ -56,7 +47,6 @@ def main():
                       proj=tf.tile(proj, [n, 1, 1]),
                       H=H, W=W))
         print('rendering done')
-        # session.run(nr._rasterize_grad())
 
     print(np.min(fids))
     plt.figure()
