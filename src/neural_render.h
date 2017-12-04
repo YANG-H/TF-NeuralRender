@@ -141,7 +141,7 @@ public:
     LOG(INFO) << "begin bilinear_sample";
     const Tensor &tex = context->input(0); // BxHtxWtxDt, float
     auto tex_data = tex.flat<float>().data();
-    const Tensor &uvgrid = context->input(0); // BxHxWx2, float
+    const Tensor &uvgrid = context->input(1); // BxHxWx2, float
     auto uvgrid_data = uvgrid.flat<float>().data();
 
     int batch_size = tex.dim_size(0);
