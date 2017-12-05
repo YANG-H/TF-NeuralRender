@@ -37,6 +37,7 @@ using namespace tensorflow;
 #ifndef __CUDACC__
 template <typename T> XINLINE T atomicAdd(T *addr, T v) { return *addr += v; }
 #endif
+template <typename T> XINLINE T squared(T v) { return v * v; }
 
 // borrowed from MXNet
 const int kMemUnitBits = 5;
@@ -56,7 +57,6 @@ const int kMaxGridNum = 65535;
 const int kMaxGridDim = 65535;
 /*! \brief suggested grid number for mapping kernel */
 const int kBaseGridNum = 1024;
-
 
 // using CPUDevice = Eigen::ThreadPoolDevice;
 // using GPUDevice = Eigen::GpuDevice;

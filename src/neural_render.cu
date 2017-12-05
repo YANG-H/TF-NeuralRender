@@ -79,13 +79,59 @@ XINLINE void add_barycentric_coord_grad(const T *p, const T *a, const T *b,
   if (abs(s) < 1e-6) {
     return;
   }
-  // we ignored the higher order residues
-  T grad_ax = grad_bc[1] * (cy - py) / (-s) + grad_bc[2] * (by - py) / s;
-  T grad_ay = grad_bc[1] * (-cx + px) / (-s) + grad_bc[2] * (-bx + px) / s;
-  T grad_bx = grad_bc[0] * (cy - py) / s + grad_bc[2] * (-ay + py) / s;
-  T grad_by = grad_bc[0] * (-cx + px) / s + grad_bc[2] * (ax - px) / s;
-  T grad_cx = grad_bc[0] * (-by + py) / s + grad_bc[1] * (-ay + py) / (-s);
-  T grad_cy = grad_bc[0] * (bx - px) / s + grad_bc[1] * (ax - px) / (-s);
+
+  T grad_bc0_ax = -(by - cy) * 1.0 / squared(s) *
+                  (bx * cy - by * cx - bx * py + by * px + cx * py - cy * px);
+  T grad_bc0_ay = (bx - cx) * 1.0 / squared(s) *
+                  (bx * cy - by * cx - bx * py + by * px + cx * py - cy * px);
+  T grad_bc0_bx = (by - cy) * 1.0 / squared(s) *
+                  (ax * cy - ay * cx - ax * py + ay * px + cx * py - cy * px);
+  T grad_bc0_by = -(bx - cx) * 1.0 / squared(s) *
+                  (ax * cy - ay * cx - ax * py + ay * px + cx * py - cy * px);
+  T grad_bc0_cx = -(by - cy) * 1.0 / squared(s) *
+                  (ax * by - ay * bx - ax * py + ay * px + bx * py - by * px);
+  T grad_bc0_cy = (bx - cx) * 1.0 / squared(s) *
+                  (ax * by - ay * bx - ax * py + ay * px + bx * py - by * px);
+
+  T grad_bc1_ax = (ay - cy) * 1.0 / squared(s) *
+                  (bx * cy - by * cx - bx * py + by * px + cx * py - cy * px);
+  T grad_bc1_ay = -(ax - cx) * 1.0 / squared(s) *
+                  (bx * cy - by * cx - bx * py + by * px + cx * py - cy * px);
+  T grad_bc1_bx = -(ay - cy) * 1.0 / squared(s) *
+                  (ax * cy - ay * cx - ax * py + ay * px + cx * py - cy * px);
+  T grad_bc1_by = (ax - cx) * 1.0 / squared(s) *
+                  (ax * cy - ay * cx - ax * py + ay * px + cx * py - cy * px);
+  T grad_bc1_cx = (ay - cy) * 1.0 / squared(s) *
+                  (ax * by - ay * bx - ax * py + ay * px + bx * py - by * px);
+  T grad_bc1_cy = -(ax - cx) * 1.0 / squared(s) *
+                  (ax * by - ay * bx - ax * py + ay * px + bx * py - by * px);
+
+  T grad_bc2_ax = -(ay - by) * 1.0 / squared(s) *
+                  (bx * cy - by * cx - bx * py + by * px + cx * py - cy * px);
+  T grad_bc2_ay = (ax - bx) * 1.0 / squared(s) *
+                  (bx * cy - by * cx - bx * py + by * px + cx * py - cy * px);
+  T grad_bc2_bx = (ay - by) * 1.0 / squared(s) *
+                  (ax * cy - ay * cx - ax * py + ay * px + cx * py - cy * px);
+  T grad_bc2_by = -(ax - bx) * 1.0 / squared(s) *
+                  (ax * cy - ay * cx - ax * py + ay * px + cx * py - cy * px);
+  T grad_bc2_cx = -(ay - by) * 1.0 / squared(s) *
+                  (ax * by - ay * bx - ax * py + ay * px + bx * py - by * px);
+  T grad_bc2_cy = (ax - bx) * 1.0 / squared(s) *
+                  (ax * by - ay * bx - ax * py + ay * px + bx * py - by * px);
+
+  T grad_ax = grad_bc[0] * grad_bc0_ax + grad_bc[1] * grad_bc1_ax +
+              grad_bc[2] * grad_bc2_ax;
+  T grad_ay = grad_bc[0] * grad_bc0_ay + grad_bc[1] * grad_bc1_ay +
+              grad_bc[2] * grad_bc2_ay;
+  T grad_bx = grad_bc[0] * grad_bc0_bx + grad_bc[1] * grad_bc1_bx +
+              grad_bc[2] * grad_bc2_bx;
+  T grad_by = grad_bc[0] * grad_bc0_by + grad_bc[1] * grad_bc1_by +
+              grad_bc[2] * grad_bc2_by;
+  T grad_cx = grad_bc[0] * grad_bc0_cx + grad_bc[1] * grad_bc1_cx +
+              grad_bc[2] * grad_bc2_cx;
+  T grad_cy = grad_bc[0] * grad_bc0_cy + grad_bc[1] * grad_bc1_cy +
+              grad_bc[2] * grad_bc2_cy;
+
   grad_a[0] += grad_ax;
   grad_a[1] += grad_ay;
   grad_b[0] += grad_bx;
