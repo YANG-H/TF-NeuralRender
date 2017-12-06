@@ -577,3 +577,6 @@ void BilinearSampleGradOp<GPUDevice>::impl(
                             batch_size, Ht, Wt, Dt, H, W, tex_data, uvgrid_data,
                             grad_sampled_data, grad_tex_data, grad_uvgrid_data);
 }
+
+REGISTER_KERNEL_BUILDER(Name("BilinearSampleGrad").Device(DEVICE_GPU),
+                        BilinearSampleGradOp<GPUDevice>)
