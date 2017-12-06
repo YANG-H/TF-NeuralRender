@@ -163,7 +163,7 @@ rasterize_kernel(int batch_size, //
   int nfaces_each_iteration = blockDim.y;
   int face_id_this_iteration = threadIdx.y;
 
-  // niterations_each_block
+  // npixeliter_each_block
   for (int pixel_iter_id = 0; pixel_iter_id < npixeliter_each_block;
        pixel_iter_id++) {
 
@@ -294,11 +294,12 @@ rasterize_kernel(int batch_size, //
 }
 
 template <>
-void RasterizeOp<GPUDevice>::rasterize_impl(
-    int batch_size, int npoints, int nfaces, const float *pts_data,
-    const int32_t *faces_data, const float *uvs_data, int H, int W,
-    float *out_uvgrid_data, float *out_z_data, int32_t *out_fids_data,
-    float *out_bc_data) {
+void RasterizeOp<GPUDevice>::impl(int batch_size, int npoints, int nfaces,
+                                  const float *pts_data,
+                                  const int32_t *faces_data,
+                                  const float *uvs_data, int H, int W,
+                                  float *out_uvgrid_data, float *out_z_data,
+                                  int32_t *out_fids_data, float *out_bc_data) {
 
   int npixels = batch_size * H * W;
 
@@ -334,7 +335,7 @@ REGISTER_KERNEL_BUILDER(Name("Rasterize").Device(DEVICE_GPU),
                         RasterizeOp<GPUDevice>)
 
 // a simple version of grad
-struct rasterize_direct_grad_kernel {
+struct rasterize_grad_kernel {
   XDEVICE void
   operator()(int global_pixel_id, int batch_size, int nfaces, int npoints,
              int H, int W,
@@ -432,13 +433,13 @@ struct rasterize_direct_grad_kernel {
 };
 
 template <>
-void RasterizeGradOp<GPUDevice>::rasterize_grad_impl(
+void RasterizeGradOp<GPUDevice>::impl(
     int batch_size, int nfaces, int npoints, int H, int W,
     const float *pts_data, const int32_t *faces_data, const float *uvs_data,
     const int32_t *out_fids_data, const float *out_bc_data,
     const float *grad_uvgrid_data, const float *grad_z_data,
     float *grad_pts_data) {
-  Kernel<GPUDevice>::Launch(rasterize_direct_grad_kernel(), batch_size * H * W,
+  Kernel<GPUDevice>::Launch(rasterize_grad_kernel(), batch_size * H * W,
                             batch_size, nfaces, npoints, H, W, pts_data,
                             faces_data, uvs_data, out_fids_data, out_bc_data,
                             grad_uvgrid_data, grad_z_data, grad_pts_data);
@@ -498,3 +499,81 @@ void BilinearSampleOp<GPUDevice>::impl(int batch_size, int Ht, int Wt, int Dt,
 
 REGISTER_KERNEL_BUILDER(Name("BilinearSample").Device(DEVICE_GPU),
                         BilinearSampleOp<GPUDevice>)
+
+struct bilinear_sample_grad_kernel {
+  XDEVICE void operator()(int idx, int batch_size, int Ht, int Wt, int Dt,
+                          int H, int W, const float *tex_data,
+                          const float *uvgrid_data,
+                          const float *grad_sampled_data, float *grad_tex_data,
+                          float *grad_uvgrid_data) const {
+    int batch_id = idx / W / H % batch_size;
+
+    float u = uvgrid_data[idx * 2 + 0];
+    float v = uvgrid_data[idx * 2 + 1];
+    float uu_real = u * (Wt - 1) + 0.5;
+    float vv_real = v * (Ht - 1) + 0.5;
+    int uu = static_cast<int>(floorf(uu_real));
+    int vv = static_cast<int>(floorf(vv_real));
+
+    int uu2 = uu + 1;
+    int vv2 = vv + 1;
+
+    float uu_w = uu_real - uu;
+    float vv_w = vv_real - vv;
+
+    uu = min(Wt - 1, max(0, uu));
+    vv = min(Ht - 1, max(0, vv));
+    uu2 = min(Wt - 1, max(0, uu2));
+    vv2 = min(Ht - 1, max(0, vv2));
+
+    int tid_topleft = (batch_id * Ht + vv) * Wt + uu;
+    int tid_bottomright = (batch_id * Ht + vv2) * Wt + uu2;
+    int tid_topright = (batch_id * Ht + vv) * Wt + uu2;
+    int tid_bottomleft = (batch_id * Ht + vv2) * Wt + uu;
+
+    float grad_u = 0, grad_v = 0;
+    for (int k = 0; k < Dt; k++) {
+      float grad_color = grad_sampled_data[idx * Dt + k];
+      /*
+       float color= tex_data[tid_topleft * Dt + k] * (1 - uu_w) * (1 - vv_w) +
+                    tex_data[tid_topright * Dt + k] * uu_w * (1 - vv_w) +
+                    tex_data[tid_bottomleft * Dt + k] * (1 - uu_w) * vv_w +
+                    tex_data[tid_bottomright * Dt + k] * uu_w * vv_w;
+       */
+
+      // write grad_tex_data
+      atomicAdd(grad_tex_data + tid_topleft * Dt + k,
+                grad_color * (1 - uu_w) * (1 - vv_w));
+      atomicAdd(grad_tex_data + tid_topright * Dt + k,
+                grad_color * uu_w * (1 - vv_w));
+      atomicAdd(grad_tex_data + tid_bottomleft * Dt + k, (1 - uu_w) * vv_w);
+      atomicAdd(grad_tex_data + tid_bottomright * Dt + k, uu_w * vv_w);
+
+      // write grad_uvgrid_data
+      grad_u +=
+          grad_color * (tex_data[tid_topleft * Dt + k] * (-1) * (1 - vv_w) +
+                        tex_data[tid_topright * Dt + k] * 1 * (1 - vv_w) +
+                        tex_data[tid_bottomleft * Dt + k] * (-1) * vv_w +
+                        tex_data[tid_bottomright * Dt + k] * 1 * vv_w);
+      grad_v +=
+          grad_color * (tex_data[tid_topleft * Dt + k] * (1 - uu_w) * (-1) +
+                        tex_data[tid_topright * Dt + k] * uu_w * (-1) +
+                        tex_data[tid_bottomleft * Dt + k] * (1 - uu_w) * 1 +
+                        tex_data[tid_bottomright * Dt + k] * uu_w * 1);
+    }
+    grad_u *= Wt - 1;
+    grad_v *= Ht - 1;
+    atomicAdd(grad_uvgrid_data + idx * 2 + 0, grad_u);
+    atomicAdd(grad_uvgrid_data + idx * 2 + 1, grad_v);
+  }
+};
+
+template <>
+void BilinearSampleGradOp<GPUDevice>::impl(
+    int batch_size, int Ht, int Wt, int Dt, int H, int W, const float *tex_data,
+    const float *uvgrid_data, const float *grad_sampled_data,
+    float *grad_tex_data, float *grad_uvgrid_data) {
+  Kernel<GPUDevice>::Launch(bilinear_sample_grad_kernel(), batch_size * H * W,
+                            batch_size, Ht, Wt, Dt, H, W, tex_data, uvgrid_data,
+                            grad_sampled_data, grad_tex_data, grad_uvgrid_data);
+}

@@ -49,3 +49,15 @@ REGISTER_OP("BilinearSample")
       c->set_output(0, c->MakeShape({batch_size, H, W, Dt})); // out
       return Status::OK();
     });
+
+REGISTER_OP("BilinearSampleGrad")
+    .Input("tex: float32")
+    .Input("uvgrid: float32")
+    .Input("grad_sampled: float32")
+    .Output("grad_tex: float32")
+    .Output("grad_uvgrid: float32")
+    .SetShapeFn([](shape_inference::InferenceContext *c) {
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(1));
+      return Status::OK();
+    });
