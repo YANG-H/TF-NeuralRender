@@ -19,7 +19,6 @@ from mesh import gen_uv_texshape
 
 STYLE_LAYERS = ('relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1')
 CONTENT_LAYER = 'relu4_2'
-DEVICES = 'CUDA_VISIBLE_DEVICES'
 
 
 def _tensor_size(tensor):
@@ -183,7 +182,7 @@ def optimize(content_targets_pts, faces,  # single mesh
 
 
 def main():
-    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'bunny.obj'))
+    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'mesh', 'bunny.obj'))
     bmin, bmax = mesh.bbox
     pts = mesh.vertices
     pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
@@ -197,9 +196,9 @@ def main():
 
     optimize(pts, faces, 8, style_img,
              content_weight=1e7, style_weight=1e-1, tv_weight=0,
-             epochs=50000, learning_rate=1e-1, tex_unit_size=4,
+             epochs=50000, learning_rate=1e-2, tex_unit_size=4,
              subsample=4,
-             log_dir=os.path.join(misc.BASE_DIR, 'log_bunny'))
+             log_dir=os.path.join(misc.BASE_DIR, 'log', '0'))
 
 
 if __name__ == '__main__':

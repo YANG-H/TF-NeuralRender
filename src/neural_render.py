@@ -8,10 +8,8 @@ import spatial_transform as st
 import camera
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(BASE_DIR)
-
 MODEL = tf.load_op_library(os.path.join(
-    BASE_DIR, 'qt_build_release', 'libTFNeuralRenderOps.so'))
+    BASE_DIR, 'build_release', 'libTFNeuralRenderOps.so'))
 
 
 def make_uvs(nfaces):

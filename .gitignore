@@ -108,3 +108,4 @@ log/
 log*/
 data/VGG
 
+build_release/
