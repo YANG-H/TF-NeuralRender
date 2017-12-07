@@ -162,7 +162,7 @@ def optimize(content_targets_pts, faces,  # single mesh
         sess.run(tf.global_variables_initializer())
 
         # resume session if permitted
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(max_to_keep=5)
         ckpt = tf.train.get_checkpoint_state(log_dir)
         if try_resuming and ckpt and ckpt.model_checkpoint_path:
             print('session restored from %s' % ckpt.model_checkpoint_path)
@@ -183,6 +183,9 @@ def optimize(content_targets_pts, faces,  # single mesh
             print('%d: loss=%f, content_loss=%f, style_loss=%f, tv_loss=%f, '
                   'time cost=%f seconds' % (
                       epoch, l, cl, sl, tl, delta_time))
+            if epoch % 100 == 0:
+                saver.save(sess, os.path.join(
+                    log_dir, 'model'), global_step=epoch)
 
 
 def main():
