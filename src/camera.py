@@ -52,6 +52,8 @@ def batched_look_at(eye, center, up):
     ''' make batched view matrices '''
     def _normalize(xx):
         return xx / tf.norm(xx, axis=-1, keep_dims=True)
+    batch_size = eye.shape[0]
+    assert center.shape[0] == batch_size and up.shape[0] == batch_size
 
     z = _normalize(center - eye)
     x = _normalize(tf.cross(up, z))
@@ -73,11 +75,11 @@ def batched_look_at(eye, center, up):
                       tf.tile(
                           tf.constant([[0, 0, 0, 1]],
                                       dtype=tf.float32),
-                          [eye.shape[0], 1])], axis=-1)
-    assert flat.shape[0] == eye.shape[0] and flat.shape[1] == 16
-    mats = tf.cast(tf.reshape(flat, [eye.shape[0], 4, 4]),
+                          [batch_size, 1])], axis=-1)
+    assert flat.shape[0] == batch_size and flat.shape[1] == 16
+    mats = tf.cast(tf.reshape(flat, [batch_size, 4, 4]),
                    tf.float32)
-    assert mats.shape[0] == eye.shape[0]
+    assert mats.shape[0] == batch_size
     assert mats.shape[1] == 4 and mats.shape[2] == 4
     return mats
 

@@ -33,7 +33,8 @@ def optimize(content_targets_pts, faces,  # single mesh
              vgg_path=os.path.join(misc.DATA_DIR, 'VGG',
                                    'imagenet-vgg-verydeep-19.mat'),
              log_dir=os.path.join(misc.BASE_DIR, 'log'),
-             learning_rate=1e-3, tex_unit_size=10, subsample=4):
+             learning_rate=1e-3, tex_unit_size=10,
+             subsample=4, try_resuming=True):
 
     assert len(content_targets_pts.shape) == 2
     assert len(faces.shape) == 2
@@ -51,22 +52,19 @@ def optimize(content_targets_pts, faces,  # single mesh
 
     # precompute style features
     with tf.Graph().as_default(), tf.device('/gpu:0'), tf.Session() as sess:
-        style_image = tf.placeholder(
-            tf.float32, shape=style_shape, name='style_image')
+        style_image = tf.constant(np.array([style_target_img]),
+                                  dtype=tf.float32)
         style_image_pre = vgg.preprocess(style_image)
         net = vgg.net(vgg_path, style_image_pre)
-        style_pre = np.array([style_target_img])
         for layer in STYLE_LAYERS:
-            features = net[layer].eval(feed_dict={style_image: style_pre})
+            features = sess.run(net[layer])
             features = np.reshape(features, (-1, features.shape[3]))
             gram = np.matmul(features.T, features) / features.size
             style_features[layer] = gram
 
     with tf.Graph().as_default(), tf.Session() as sess:
         with tf.device('/gpu:0'):
-            X_pts = tf.placeholder(
-                tf.float32, shape=content_targets_pts.shape, name='X_pts')
-
+            X_pts = tf.constant(value=content_targets_pts, dtype=tf.float32)
             pred_pts = tf.Variable(
                 initial_value=content_targets_pts, trainable=True,
                 dtype=tf.float32)
@@ -102,7 +100,8 @@ def optimize(content_targets_pts, faces,  # single mesh
                                tf.sin(view_angles * math.pi * 2) * view_dists,
                                view_hs], axis=1),
                 center=tf.zeros([ncams, 3], dtype=tf.float32),
-                up=tf.tile(tf.constant([[0, 0, 1]], dtype=tf.float32), [ncams, 1]))
+                up=tf.tile(tf.constant([[0, 0, 1]], dtype=tf.float32),
+                           [ncams, 1]))
 
             projs = tf.tile(tf.expand_dims(
                 camera.perspective(focal=200, H=255, W=255), axis=0),
@@ -111,7 +110,7 @@ def optimize(content_targets_pts, faces,  # single mesh
             pred_rendered, uvgrid, z, fids, bc = nr.render(
                 pts=pred_pts_batched, faces=faces_batched, uvs=uvs_batched,
                 tex=pred_tex_batched, modelview=modelviews, proj=projs,
-                H=255 * subsample, W=255 * subsample)  # batch_size x 255 x 255 x 3
+                H=255 * subsample, W=255 * subsample)
             pooled_pred_rendered = tf.nn.avg_pool(
                 pred_rendered, ksize=[1, subsample, subsample, 1],
                 strides=[1, subsample, subsample, 1], padding='VALID')
@@ -155,30 +154,35 @@ def optimize(content_targets_pts, faces,  # single mesh
         tf.summary.image("tex", tf.expand_dims(pred_tex, axis=0))
         merged_summary_op = tf.summary.merge_all()
 
-        if os.path.exists(log_dir):
-            shutil.rmtree(log_dir)
-            assert not os.path.exists(log_dir)
-
-        summary_writer = tf.summary.FileWriter(
-            log_dir, graph=tf.get_default_graph())
+        summary_writer = tf.summary.FileWriter(log_dir)
         summary_writer.add_graph(tf.get_default_graph())
 
         # overall loss
         train_step = tf.train.AdamOptimizer(learning_rate).minimize(loss)
         sess.run(tf.global_variables_initializer())
+
+        # resume session if permitted
+        saver = tf.train.Saver()
+        ckpt = tf.train.get_checkpoint_state(log_dir)
+        if try_resuming and ckpt and ckpt.model_checkpoint_path:
+            print('session restored from %s' % ckpt.model_checkpoint_path)
+            saver.restore(sess, ckpt.model_checkpoint_path)
+
         for epoch in range(epochs):
             start_time = time.time()
-            _, l, cl, sl, tl, summary = sess.run(
-                [train_step, loss, content_loss, style_loss, tv_loss,
-                 merged_summary_op],
-                feed_dict={X_pts: content_targets_pts})
+            if epoch % 4 == 0:
+                _, l, cl, sl, tl, summary = sess.run(
+                    [train_step, loss, content_loss, style_loss, tv_loss,
+                     merged_summary_op])
+                summary_writer.add_summary(summary, epoch)
+            else:
+                _, l, cl, sl, tl = sess.run(
+                    [train_step, loss, content_loss, style_loss, tv_loss])
             end_time = time.time()
             delta_time = end_time - start_time
             print('%d: loss=%f, content_loss=%f, style_loss=%f, tv_loss=%f, '
                   'time cost=%f seconds' % (
                       epoch, l, cl, sl, tl, delta_time))
-            if epoch % 2 == 0:
-                summary_writer.add_summary(summary, epoch)
 
 
 def main():
@@ -191,14 +195,14 @@ def main():
     pts = pts[:, [0, 2, 1]]
     faces = mesh.faces
 
-    style_img = ndimage.imread(os.path.join(misc.DATA_DIR, 'style', 'wave.jpg'),
-                               mode='RGB')
+    style_img = ndimage.imread(os.path.join(misc.DATA_DIR, 'style',
+                                            'la_muse.jpg'), mode='RGB')
 
     optimize(pts, faces, 8, style_img,
              content_weight=1e7, style_weight=1e-1, tv_weight=0,
-             epochs=50000, learning_rate=1e-2, tex_unit_size=4,
+             epochs=50000, learning_rate=1e-1, tex_unit_size=4,
              subsample=4,
-             log_dir=os.path.join(misc.BASE_DIR, 'log', '0'))
+             log_dir=os.path.join(misc.BASE_DIR, 'log', '1'))
 
 
 if __name__ == '__main__':
