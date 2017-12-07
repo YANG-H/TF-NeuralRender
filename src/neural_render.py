@@ -57,7 +57,29 @@ def _rasterize_grad(op, grad_uvgrid, grad_z, grad_fids, grad_bc, **kwargs):
     return grad_pts, None, None
 
 
-def render(pts, faces, uvs, tex, modelview, proj, H, W):
+def bilinear_sample(tex, uvgrid):
+    ''' bilinear_sample
+    Input
+    ---
+    - `tex`: BxHtxWtxDt float32
+    - `uvgrid`:  BxHxWx2 float32
+
+    Output
+    ---
+    - `sampled`: BxHxWxDt float32
+    '''
+    assert tex.shape[0] == uvgrid.shape[0]
+    return MODEL.rasterize(tex, uvgrid)
+
+
+@tf.RegisterGradient('BilinearSample')
+def _bilinear_sample_grad(op, grad_sampled, **kwargs):
+    tex, uvgrid = op.inputs
+    grad_tex, grad_uvgrid = MODEL.bilinear_sample_grad(tex, uvgrid, grad_sampled)
+    return grad_tex, grad_uvgrid
+
+
+def render(pts, faces, uvs, tex, modelview, proj, H=400, W=400):
     ''' render textured mesh to image
     Input
     ---
@@ -78,6 +100,5 @@ def render(pts, faces, uvs, tex, modelview, proj, H, W):
     '''
     pts = camera.apply_transform(pts, modelview, proj)
     uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H, W)
-    # rendered = MODEL.bilinear_sample(tex, uvgrid)
-    rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
+    rendered = MODEL.bilinear_sample(tex, uvgrid)
     return rendered, uvgrid, z, fids, bc
