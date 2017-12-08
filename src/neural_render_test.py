@@ -69,7 +69,7 @@ def backward():
 
     with tf.Session() as session:
         pts_pl = tf.placeholder(dtype='float32', shape=pts.shape)
-        
+
         mv = camera.look_at(eye=tf.constant([2, 4, 4], dtype='float32'),
                             center=tf.constant([0, 0, 0], dtype='float32'),
                             up=tf.constant([0, 0, 1], dtype='float32'))

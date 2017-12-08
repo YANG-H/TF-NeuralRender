@@ -75,7 +75,8 @@ def bilinear_sample(tex, uvgrid):
 @tf.RegisterGradient('BilinearSample')
 def _bilinear_sample_grad(op, grad_sampled, **kwargs):
     tex, uvgrid = op.inputs
-    grad_tex, grad_uvgrid = MODEL.bilinear_sample_grad(tex, uvgrid, grad_sampled)
+    grad_tex, grad_uvgrid = MODEL.bilinear_sample_grad(
+        tex, uvgrid, grad_sampled)
     return grad_tex, grad_uvgrid
 
 
@@ -100,5 +101,6 @@ def render(pts, faces, uvs, tex, modelview, proj, H=400, W=400):
     '''
     pts = camera.apply_transform(pts, modelview, proj)
     uvgrid, z, fids, bc = MODEL.rasterize(pts, faces, uvs, H, W)
-    rendered = MODEL.bilinear_sample(tex, uvgrid)
+    # rendered = MODEL.bilinear_sample(tex, uvgrid)
+    rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
     return rendered, uvgrid, z, fids, bc

@@ -5,6 +5,7 @@ import math
 import functools
 import shutil
 import random
+import argparse
 import tensorflow as tf
 import numpy as np
 import pymesh as pm
@@ -16,6 +17,35 @@ import vgg
 
 import misc
 from mesh import gen_uv_texshape
+
+parser = argparse.ArgumentParser(description='Arguments for style3d training')
+parser.add_argument('mesh', metavar='mesh_file', type=str,
+                    help='A triangular mesh file (like .obj) used as 3D shape')
+parser.add_argument('style', metavar='style_image', type=str,
+                    help='An image serving as the style')
+parser.add_argument('log_dir', metavar='log_dir',
+                    type=str, help='Log directory')
+parser.add_argument('--content_weight', type=float, default=1e7,
+                    help='Weight of content(shape) constraint [default: 1e7]')
+parser.add_argument('--style_weight', type=float, default=0.1,
+                    help='Weight of style constraint [default: 0.1]')
+parser.add_argument('--batch_size', type=int, default=8,
+                    help='Batch size [default: 8]')
+parser.add_argument('--learning_rate', type=float,
+                    default=0.01, help='Learning rate [default: 0.01]')
+parser.add_argument('--tex_unit_size', type=int, default=4,
+                    help='Size of a texture unit for a face [default: 4]')
+parser.add_argument('--subsample_size', type=int, default=4,
+                    help='Subsample size for super-resolution in rendering '
+                    '[default: 4]')
+parser.add_argument('--max_epoch', type=int, default=50000,
+                    help='Epoch to run [default: 50000]')
+parser.add_argument('--try_resume_training', type=int, default=1,
+                    help='Try resume training if their exist '
+                    'checkpoints in log directory [default: 1]')
+FLAGS = parser.parse_args()
+print(FLAGS)
+
 
 STYLE_LAYERS = ('relu1_1', 'relu2_1', 'relu3_1', 'relu4_1', 'relu5_1')
 CONTENT_LAYER = 'relu4_2'
@@ -29,12 +59,11 @@ def _tensor_size(tensor):
 def optimize(content_targets_pts, faces,  # single mesh
              ncams,  # number of cams
              style_target_img,  # single image
-             content_weight, style_weight, tv_weight, epochs=10,
+             content_weight, style_weight, tv_weight, epochs,
+             log_dir, learning_rate, tex_unit_size,
+             subsample, try_resuming,
              vgg_path=os.path.join(misc.DATA_DIR, 'VGG',
-                                   'imagenet-vgg-verydeep-19.mat'),
-             log_dir=os.path.join(misc.BASE_DIR, 'log'),
-             learning_rate=1e-3, tex_unit_size=10,
-             subsample=4, try_resuming=True):
+                                   'imagenet-vgg-verydeep-19.mat')):
 
     assert len(content_targets_pts.shape) == 2
     assert len(faces.shape) == 2
@@ -44,7 +73,6 @@ def optimize(content_targets_pts, faces,  # single mesh
     uvs, tex_shape = gen_uv_texshape(faces.shape[0], tex_unit_size)
 
     batch_size = ncams
-
     style_features = {}
 
     style_shape = (1,) + style_target_img.shape
@@ -189,7 +217,7 @@ def optimize(content_targets_pts, faces,  # single mesh
 
 
 def main():
-    mesh = pm.load_mesh(os.path.join(misc.DATA_DIR, 'mesh', 'bunny.obj'))
+    mesh = pm.load_mesh(FLAGS.mesh)
     bmin, bmax = mesh.bbox
     pts = mesh.vertices
     pts = pts - np.tile(np.expand_dims((bmax + bmin) / 2,
@@ -198,14 +226,18 @@ def main():
     pts = pts[:, [0, 2, 1]]
     faces = mesh.faces
 
-    style_img = ndimage.imread(os.path.join(misc.DATA_DIR, 'style',
-                                            'la_muse.jpg'), mode='RGB')
+    style_img = ndimage.imread(FLAGS.style, mode='RGB')
 
-    optimize(pts, faces, 8, style_img,
-             content_weight=1e7, style_weight=1e-1, tv_weight=0,
-             epochs=50000, learning_rate=1e-1, tex_unit_size=4,
-             subsample=4,
-             log_dir=os.path.join(misc.BASE_DIR, 'log', '1'))
+    optimize(pts, faces, FLAGS.batch_size, style_img,
+             content_weight=FLAGS.content_weight,
+             style_weight=FLAGS.style_weight,
+             tv_weight=0,
+             epochs=FLAGS.max_epoch,
+             learning_rate=FLAGS.learning_rate,
+             tex_unit_size=FLAGS.tex_unit_size,
+             subsample=FLAGS.subsample_size,
+             log_dir=FLAGS.log_dir,
+             try_resuming=FLAGS.try_resume_training)
 
 
 if __name__ == '__main__':
