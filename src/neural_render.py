@@ -104,3 +104,18 @@ def render(pts, faces, uvs, tex, modelview, proj, H=400, W=400):
     # rendered = MODEL.bilinear_sample(tex, uvgrid)
     rendered = st.bilinear_sampler(tex, uvgrid[:, :, :, 0], uvgrid[:, :, :, 1])
     return rendered, uvgrid, z, fids, bc
+
+
+def gen_face_normal(pts, faces, fids):
+    ''' generate face normal image
+    Input
+    ---
+    - `pts`: BxNpx3, float32
+    - `faces`: BxNfx3, int32
+    - `fids`: BxHxW, int32
+
+    Output
+    ---
+    - `normal`: BxHxWx3, float32
+    '''
+    pass

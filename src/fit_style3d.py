@@ -29,6 +29,9 @@ parser.add_argument('--content_weight', type=float, default=1e7,
                     help='Weight of content(shape) constraint [default: 1e7]')
 parser.add_argument('--style_weight', type=float, default=0.1,
                     help='Weight of style constraint [default: 0.1]')
+parser.add_argument('--tv_weight', type=float, default=0,
+                    help='Weight of adjacent pixel consistency in rendered '
+                    'images [default: 0]')
 parser.add_argument('--batch_size', type=int, default=8,
                     help='Batch size [default: 8]')
 parser.add_argument('--learning_rate', type=float,
@@ -40,9 +43,9 @@ parser.add_argument('--subsample_size', type=int, default=4,
                     '[default: 4]')
 parser.add_argument('--max_epoch', type=int, default=50000,
                     help='Epoch to run [default: 50000]')
-parser.add_argument('--try_resume_training', type=int, default=1,
+parser.add_argument('--try_resume_training', type=int, default=0,
                     help='Try resume training if their exist '
-                    'checkpoints in log directory [default: 1]')
+                    'checkpoints in log directory [default: 0]')
 FLAGS = parser.parse_args()
 print(FLAGS)
 
@@ -161,12 +164,14 @@ def optimize(content_targets_pts, faces,  # single mesh
                 functools.reduce(tf.add, style_losses) / batch_size
 
             # total variation denoising
-            tv_y_size = _tensor_size(pred_tex[1:, :, :])
-            tv_x_size = _tensor_size(pred_tex[:, 1:, :])
-            y_tv = tf.nn.l2_loss(pred_tex[1:, :, :] -
-                                 pred_tex[:pred_tex.shape[0] - 1, :, :])
-            x_tv = tf.nn.l2_loss(pred_tex[:, 1:, :] -
-                                 pred_tex[:, :pred_tex.shape[1] - 1, :])
+            tv_y_size = _tensor_size(pred_rendered[:, 1:, :, :])
+            tv_x_size = _tensor_size(pred_rendered[:, :, 1:, :])
+            y_tv = tf.nn.l2_loss(
+                pred_rendered[:, 1:, :, :] -
+                pred_rendered[:, :pred_rendered.shape[1] - 1, :, :])
+            x_tv = tf.nn.l2_loss(
+                pred_rendered[:, :, 1:, :] -
+                pred_rendered[:, :, :pred_rendered.shape[2] - 1, :])
             tv_loss = tv_weight * 2 * \
                 (x_tv / tv_x_size + y_tv / tv_y_size)
 
@@ -231,7 +236,7 @@ def main():
     optimize(pts, faces, FLAGS.batch_size, style_img,
              content_weight=FLAGS.content_weight,
              style_weight=FLAGS.style_weight,
-             tv_weight=0,
+             tv_weight=FLAGS.tv_weight,
              epochs=FLAGS.max_epoch,
              learning_rate=FLAGS.learning_rate,
              tex_unit_size=FLAGS.tex_unit_size,
